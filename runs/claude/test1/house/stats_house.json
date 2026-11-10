@@ -1,0 +1,47 @@
+{
+ "asset": "house",
+ "triangles": 8600,
+ "budget": 30000,
+ "per_object": {
+  "house_shell": 1692,
+  "house_trim": 968,
+  "house_windows": 3480,
+  "house_roof": 684,
+  "house_porch": 528,
+  "house_door_frame": 132,
+  "house_door": 168,
+  "house_stairs": 312,
+  "house_chimney": 196,
+  "house_furniture": 440
+ },
+ "dimensions_m": [
+  9.3718,
+  10.175,
+  9.675
+ ],
+ "min": [
+  -4.6859,
+  -5.8,
+  -0.05
+ ],
+ "max": [
+  4.6859,
+  4.375,
+  9.625
+ ],
+ "objects": 10,
+ "materials": [
+  "mat_bedding",
+  "mat_glass",
+  "mat_iron",
+  "mat_roof",
+  "mat_roof_dark",
+  "mat_stone",
+  "mat_stone_dark",
+  "mat_wood",
+  "mat_wood_board",
+  "mat_wood_dark",
+  "mat_wood_trim"
+ ],
+ "problems": []
+}

@@ -292,6 +292,66 @@ def xform(o, matrix):
     return o
 
 
+def wall(name, L, H, T, materials, openings=(), stripe=None, step=0.5, z0=0.0):
+    """Wall slab along X (centred), from z0 to z0+H, thickness T along Y, with rectangular
+    openings [(u0, u1, a, b)] (u along X from the centre, a..b absolute heights).
+    stripe='h' alternates the two materials in horizontal boards, 'v' in vertical sheets."""
+    us = {-L / 2, L / 2}
+    zs = {z0, z0 + H}
+    for u0, u1, a, b in openings:
+        us.update((u0, u1)); zs.update((a, b))
+    if stripe == 'h':
+        k = z0
+        while k < z0 + H - 1e-6:
+            zs.add(round(k, 4)); k += step
+    elif stripe == 'v':
+        k = -L / 2
+        while k < L / 2 - 1e-6:
+            us.add(round(k, 4)); k += step
+    us = sorted(us); zs = sorted(zs)
+    bm = bmesh.new()
+    def inside(u, z):
+        return any(u0 < u < u1 and a < z < b for u0, u1, a, b in openings)
+    def solid(i, j):
+        if i < 0 or j < 0 or i >= len(us) - 1 or j >= len(zs) - 1:
+            return False
+        return not inside((us[i] + us[i + 1]) / 2, (zs[j] + zs[j + 1]) / 2)
+    for i in range(len(us) - 1):
+        for j in range(len(zs) - 1):
+            if not solid(i, j):
+                continue
+            x0, x1, a, b = us[i], us[i + 1], zs[j], zs[j + 1]
+            mi = 0
+            if stripe == 'h':
+                mi = int(round((a - z0) / step)) % 2
+            elif stripe == 'v':
+                mi = int(round((x0 + L / 2) / step)) % 2
+            def quad(pts):
+                f = bm.faces.new([bm.verts.new(p) for p in pts])
+                f.material_index = mi
+            quad([(x0, -T / 2, a), (x1, -T / 2, a), (x1, -T / 2, b), (x0, -T / 2, b)])        # front (-Y)
+            quad([(x1, T / 2, a), (x0, T / 2, a), (x0, T / 2, b), (x1, T / 2, b)])            # back
+            if not solid(i - 1, j):
+                quad([(x0, T / 2, a), (x0, -T / 2, a), (x0, -T / 2, b), (x0, T / 2, b)])
+            if not solid(i + 1, j):
+                quad([(x1, -T / 2, a), (x1, T / 2, a), (x1, T / 2, b), (x1, -T / 2, b)])
+            if not solid(i, j - 1):
+                quad([(x0, T / 2, a), (x1, T / 2, a), (x1, -T / 2, a), (x0, -T / 2, a)])
+            if not solid(i, j + 1):
+                quad([(x0, -T / 2, b), (x1, -T / 2, b), (x1, T / 2, b), (x0, T / 2, b)])
+    o = obj_from_bm(name, bm, materials[0])
+    for m in materials[1:]:
+        o.data.materials.append(m)
+    o['keep_normals'] = True
+    o['flat'] = True
+    return o
+
+
+def place(o, loc=(0, 0, 0), rot_z=0.0):
+    """Rotate a piece about Z (degrees) and move it, baking the result into its mesh."""
+    return xform(o, Matrix.Translation(Vector(loc)) @ Matrix.Rotation(math.radians(rot_z), 4, 'Z'))
+
+
 def add_bevel(o, width, seg=2, angle=35):
     m = o.modifiers.new('bevel', 'BEVEL')
     m.width = width

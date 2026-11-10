@@ -1,0 +1,41 @@
+{
+ "asset": "warehouse",
+ "triangles": 5332,
+ "budget": 20000,
+ "per_object": {
+  "warehouse_shell": 1012,
+  "warehouse_frame": 1012,
+  "warehouse_roof": 788,
+  "warehouse_roller_door": 528,
+  "warehouse_door": 84,
+  "warehouse_crates": 1908
+ },
+ "dimensions_m": [
+  16.1197,
+  11.402,
+  7.81
+ ],
+ "min": [
+  -7.375,
+  -5.75,
+  -0.08
+ ],
+ "max": [
+  8.7447,
+  5.652,
+  7.73
+ ],
+ "objects": 6,
+ "materials": [
+  "mat_concrete",
+  "mat_frame_orange",
+  "mat_roller_grey",
+  "mat_roller_grey_dark",
+  "mat_sheet_blue",
+  "mat_sheet_blue_dark",
+  "mat_vent",
+  "mat_wood",
+  "mat_wood_light"
+ ],
+ "problems": []
+}
