@@ -1,0 +1,34 @@
+{
+ "asset": "pistol",
+ "triangles": 868,
+ "budget": 3000,
+ "per_object": {
+  "pistol_slide": 336,
+  "pistol_frame": 512,
+  "pistol_trigger": 20
+ },
+ "dimensions_m": [
+  0.038,
+  0.2567,
+  0.178
+ ],
+ "min": [
+  -0.019,
+  -0.1805,
+  -0.096
+ ],
+ "max": [
+  0.019,
+  0.0762,
+  0.082
+ ],
+ "objects": 3,
+ "materials": [
+  "mat_bore",
+  "mat_gunmetal",
+  "mat_gunmetal_light",
+  "mat_tan",
+  "mat_tan_dark"
+ ],
+ "problems": []
+}

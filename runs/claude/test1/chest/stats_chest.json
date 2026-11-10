@@ -1,0 +1,35 @@
+{
+ "asset": "chest",
+ "triangles": 2784,
+ "budget": 8000,
+ "per_object": {
+  "chest_base": 1784,
+  "chest_glow": 300,
+  "chest_lid": 700
+ },
+ "dimensions_m": [
+  1.064,
+  0.7971,
+  0.771
+ ],
+ "min": [
+  -0.532,
+  -0.407,
+  0.0
+ ],
+ "max": [
+  0.532,
+  0.3901,
+  0.771
+ ],
+ "objects": 3,
+ "materials": [
+  "mat_glow",
+  "mat_gold",
+  "mat_iron",
+  "mat_wood",
+  "mat_wood_dark",
+  "mat_wood_light"
+ ],
+ "problems": []
+}

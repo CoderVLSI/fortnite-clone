@@ -1,0 +1,38 @@
+{
+ "asset": "assault_rifle",
+ "triangles": 1756,
+ "budget": 8000,
+ "per_object": {
+  "rifle_metal": 804,
+  "rifle_lens": 12,
+  "rifle_body": 672,
+  "rifle_magazine": 248,
+  "rifle_trigger": 20
+ },
+ "dimensions_m": [
+  0.0902,
+  0.851,
+  0.286
+ ],
+ "min": [
+  -0.0451,
+  -0.521,
+  -0.126
+ ],
+ "max": [
+  0.0451,
+  0.33,
+  0.16
+ ],
+ "objects": 5,
+ "materials": [
+  "mat_bore",
+  "mat_gunmetal",
+  "mat_lens",
+  "mat_olive",
+  "mat_olive_dark",
+  "mat_tan",
+  "mat_tan_dark"
+ ],
+ "problems": []
+}

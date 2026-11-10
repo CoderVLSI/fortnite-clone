@@ -1,0 +1,36 @@
+{
+ "asset": "shotgun",
+ "triangles": 1320,
+ "budget": 6000,
+ "per_object": {
+  "shotgun_barrels": 400,
+  "shotgun_body": 572,
+  "shotgun_pump": 328,
+  "shotgun_trigger": 20
+ },
+ "dimensions_m": [
+  0.0912,
+  0.951,
+  0.2544
+ ],
+ "min": [
+  -0.0456,
+  -0.601,
+  -0.1176
+ ],
+ "max": [
+  0.0456,
+  0.35,
+  0.1368
+ ],
+ "objects": 4,
+ "materials": [
+  "mat_bore",
+  "mat_gunmetal",
+  "mat_olive",
+  "mat_olive_dark",
+  "mat_tan",
+  "mat_tan_dark"
+ ],
+ "problems": []
+}
