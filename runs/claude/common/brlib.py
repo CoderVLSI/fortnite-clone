@@ -274,6 +274,24 @@ def leaf_clump(bm, rng, centre, radius, count, light_from=0.3, cover=1.6, size=(
             f.material_index = mi
 
 
+def beam(name, p0, p1, w, d=None, material=None, bevel=0.0, seg=1, extend=0.0):
+    """Rectangular beam between two points (w x d cross-section)."""
+    p0, p1 = Vector(p0), Vector(p1)
+    v = p1 - p0
+    L = v.length + 2 * extend
+    o = box(name, (w, d if d is not None else w, L), loc=(p0 + p1) / 2, material=material, bevel=bevel, seg=seg)
+    o.rotation_euler = v.to_track_quat('Z', 'Y').to_euler()
+    return o
+
+
+def xform(o, matrix):
+    """Bake a matrix into the mesh of an object that sits at the origin."""
+    apply_mods(o)
+    o.data.transform(matrix)
+    o.data.update()
+    return o
+
+
 def add_bevel(o, width, seg=2, angle=35):
     m = o.modifiers.new('bevel', 'BEVEL')
     m.width = width

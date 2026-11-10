@@ -1,0 +1,35 @@
+{
+ "asset": "lookout_tower",
+ "triangles": 4332,
+ "budget": 12000,
+ "per_object": {
+  "tower_frame": 3476,
+  "tower_ladder": 704,
+  "tower_roof": 152
+ },
+ "dimensions_m": [
+  4.55,
+  4.8732,
+  10.0036
+ ],
+ "min": [
+  -2.275,
+  -2.5982,
+  -0.0036
+ ],
+ "max": [
+  2.275,
+  2.275,
+  10.0
+ ],
+ "objects": 3,
+ "materials": [
+  "mat_iron",
+  "mat_roof",
+  "mat_roof_dark",
+  "mat_wood",
+  "mat_wood_dark",
+  "mat_wood_light"
+ ],
+ "problems": []
+}

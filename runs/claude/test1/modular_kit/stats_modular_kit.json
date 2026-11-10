@@ -1,0 +1,48 @@
+{
+ "asset": "modular_kit",
+ "triangles": 12654,
+ "budget": 30000,
+ "per_object": {
+  "kit_wall_wood": 796,
+  "kit_floor_wood": 796,
+  "kit_ramp_wood": 1060,
+  "kit_cone_wood": 834,
+  "kit_wall_brick": 1512,
+  "kit_floor_brick": 1512,
+  "kit_ramp_brick": 2128,
+  "kit_cone_brick": 834,
+  "kit_wall_metal": 724,
+  "kit_floor_metal": 724,
+  "kit_ramp_metal": 900,
+  "kit_cone_metal": 834
+ },
+ "dimensions_m": [
+  20.815,
+  17.1485,
+  4.2442
+ ],
+ "min": [
+  -10.4,
+  -8.5742,
+  -0.04
+ ],
+ "max": [
+  10.415,
+  8.5742,
+  4.2042
+ ],
+ "objects": 12,
+ "materials": [
+  "mat_brick",
+  "mat_mortar",
+  "mat_rivet",
+  "mat_steel_frame",
+  "mat_steel_sheet",
+  "mat_steel_sheet_dark",
+  "mat_stone_frame",
+  "mat_wood_frame",
+  "mat_wood_plank",
+  "mat_wood_plank_light"
+ ],
+ "problems": []
+}
