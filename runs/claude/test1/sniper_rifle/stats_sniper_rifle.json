@@ -1,0 +1,37 @@
+{
+ "asset": "sniper_rifle",
+ "triangles": 2432,
+ "budget": 9000,
+ "per_object": {
+  "sniper_metal": 788,
+  "sniper_body": 780,
+  "sniper_magazine": 160,
+  "sniper_scope": 684,
+  "sniper_trigger": 20
+ },
+ "dimensions_m": [
+  0.1142,
+  1.251,
+  0.289
+ ],
+ "min": [
+  -0.038,
+  -0.861,
+  -0.093
+ ],
+ "max": [
+  0.0762,
+  0.39,
+  0.196
+ ],
+ "objects": 5,
+ "materials": [
+  "mat_bore",
+  "mat_gunmetal",
+  "mat_lens",
+  "mat_olive",
+  "mat_tan",
+  "mat_tan_dark"
+ ],
+ "problems": []
+}

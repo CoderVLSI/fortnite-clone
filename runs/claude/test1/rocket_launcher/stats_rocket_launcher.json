@@ -1,0 +1,38 @@
+{
+ "asset": "rocket_launcher",
+ "triangles": 1696,
+ "budget": 8000,
+ "per_object": {
+  "launcher_tube": 372,
+  "launcher_trim": 308,
+  "launcher_metal": 896,
+  "launcher_lens": 12,
+  "launcher_rocket": 88,
+  "launcher_trigger": 20
+ },
+ "dimensions_m": [
+  0.268,
+  1.304,
+  0.3875
+ ],
+ "min": [
+  -0.134,
+  -0.734,
+  -0.1075
+ ],
+ "max": [
+  0.134,
+  0.57,
+  0.28
+ ],
+ "objects": 6,
+ "materials": [
+  "mat_bore",
+  "mat_gunmetal",
+  "mat_lens",
+  "mat_olive",
+  "mat_olive_dark",
+  "mat_tan"
+ ],
+ "problems": []
+}
