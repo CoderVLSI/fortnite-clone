@@ -1,0 +1,35 @@
+{
+ "asset": "ammo_box",
+ "triangles": 2928,
+ "budget": 5000,
+ "per_object": {
+  "ammo_box_base": 1072,
+  "ammo_box_rounds": 864,
+  "ammo_box_lid": 992
+ },
+ "dimensions_m": [
+  0.526,
+  0.283,
+  0.3201
+ ],
+ "min": [
+  -0.263,
+  -0.141,
+  0.0
+ ],
+ "max": [
+  0.263,
+  0.142,
+  0.3201
+ ],
+ "objects": 3,
+ "materials": [
+  "mat_brass",
+  "mat_copper",
+  "mat_iron",
+  "mat_olive",
+  "mat_olive_dark",
+  "mat_olive_light"
+ ],
+ "problems": []
+}

@@ -1,0 +1,36 @@
+{
+ "asset": "medkit",
+ "triangles": 1988,
+ "budget": 4000,
+ "per_object": {
+  "medkit_base": 832,
+  "medkit_lid": 696,
+  "medkit_bandage": 460
+ },
+ "dimensions_m": [
+  0.56,
+  0.3529,
+  0.158
+ ],
+ "min": [
+  -0.225,
+  -0.1959,
+  0.0
+ ],
+ "max": [
+  0.335,
+  0.157,
+  0.158
+ ],
+ "objects": 3,
+ "materials": [
+  "mat_bandage",
+  "mat_bandage_dark",
+  "mat_dark_plastic",
+  "mat_red",
+  "mat_tan",
+  "mat_tan_dark",
+  "mat_tan_light"
+ ],
+ "problems": []
+}

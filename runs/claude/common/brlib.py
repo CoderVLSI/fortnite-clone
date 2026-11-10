@@ -210,6 +210,37 @@ def hull(name, pts, material=None, loc=(0, 0, 0)):
     return obj_from_bm(name, bm, material, loc)
 
 
+def tub(name, size, wall, depth, loc=(0, 0, 0), material=None, inner=None, bevel=0.0, seg=2):
+    """Open-topped box: size (x, y, z), centred in X/Y, base at local Z=0, cavity `depth` deep."""
+    sx, sy, sz = size
+    bm = bmesh.new()
+    def ring(hx, hy, z):
+        return [bm.verts.new((x, y, z)) for x, y in ((-hx, -hy), (hx, -hy), (hx, hy), (-hx, hy))]
+    b = ring(sx / 2, sy / 2, 0); t = ring(sx / 2, sy / 2, sz)
+    ti = ring(sx / 2 - wall, sy / 2 - wall, sz); bi = ring(sx / 2 - wall, sy / 2 - wall, sz - depth)
+    bm.faces.new(list(reversed(b)))
+    faces_in = []
+    for i in range(4):
+        j = (i + 1) % 4
+        bm.faces.new((b[i], b[j], t[j], t[i]))
+        bm.faces.new((t[i], t[j], ti[j], ti[i]))
+        faces_in.append(bm.faces.new((ti[i], ti[j], bi[j], bi[i])))
+    faces_in.append(bm.faces.new(bi))
+    o = obj_from_bm(name, bm, material, loc)
+    if inner is not None:
+        o.data.materials.append(inner)
+        for i, f in enumerate(o.data.polygons):
+            pass
+        for p in o.data.polygons:
+            c = p.center
+            if abs(c.x) < sx / 2 - wall * 0.5 and abs(c.y) < sy / 2 - wall * 0.5 and c.z < sz - 1e-6 and c.z > 1e-6:
+                p.material_index = 1
+    o['keep_normals'] = True
+    if bevel > 0:
+        add_bevel(o, bevel, seg)
+    return o
+
+
 def add_bevel(o, width, seg=2, angle=35):
     m = o.modifiers.new('bevel', 'BEVEL')
     m.width = width

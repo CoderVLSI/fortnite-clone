@@ -1,0 +1,36 @@
+{
+ "asset": "shield_potion",
+ "triangles": 1392,
+ "budget": 4000,
+ "per_object": {
+  "potion_glass": 618,
+  "potion_liquid": 366,
+  "potion_cork": 92,
+  "potion_belt": 316
+ },
+ "dimensions_m": [
+  0.2458,
+  0.2528,
+  0.25
+ ],
+ "min": [
+  -0.1229,
+  -0.1319,
+  0.0
+ ],
+ "max": [
+  0.1229,
+  0.1209,
+  0.25
+ ],
+ "objects": 4,
+ "materials": [
+  "mat_belt",
+  "mat_cork",
+  "mat_glass",
+  "mat_liquid",
+  "mat_liquid_top",
+  "mat_stud"
+ ],
+ "problems": []
+}
