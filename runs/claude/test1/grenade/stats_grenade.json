@@ -1,0 +1,34 @@
+{
+ "asset": "grenade",
+ "triangles": 1904,
+ "budget": 2500,
+ "per_object": {
+  "grenade_body": 1060,
+  "grenade_fuse": 456,
+  "grenade_lever": 148,
+  "grenade_ring": 240
+ },
+ "dimensions_m": [
+  0.0739,
+  0.0854,
+  0.1024
+ ],
+ "min": [
+  -0.0369,
+  -0.0391,
+  0.0
+ ],
+ "max": [
+  0.0369,
+  0.0463,
+  0.1024
+ ],
+ "objects": 4,
+ "materials": [
+  "mat_gunmetal",
+  "mat_gunmetal_dark",
+  "mat_olive",
+  "mat_olive_dark"
+ ],
+ "problems": []
+}
