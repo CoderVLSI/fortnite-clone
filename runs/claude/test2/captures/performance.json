@@ -1,0 +1,10 @@
+{
+  "avg_fps": 1.03841686783416,
+  "avg_frame_ms": 963.004387713493,
+  "draw_calls": 3527.0,
+  "frames": 658,
+  "primitives": 5242506.0,
+  "renderer": "llvmpipe (LLVM 20.1.2, 256 bits)",
+  "resolution": "(1280, 720)",
+  "worst_frame_ms": 1466.88500976562
+}
