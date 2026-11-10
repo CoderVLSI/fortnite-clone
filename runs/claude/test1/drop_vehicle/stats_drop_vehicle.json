@@ -1,0 +1,48 @@
+{
+ "asset": "drop_vehicle",
+ "triangles": 4228,
+ "budget": 30000,
+ "per_object": {
+  "blimp_gondola": 788,
+  "blimp_glass": 628,
+  "blimp_lamps": 144,
+  "blimp_cargo": 224,
+  "blimp_envelope": 928,
+  "blimp_rigging": 528,
+  "blimp_flame": 28,
+  "blimp_pods": 360,
+  "blimp_prop_l": 300,
+  "blimp_prop_r": 300
+ },
+ "dimensions_m": [
+  8.1173,
+  10.0845,
+  12.36
+ ],
+ "min": [
+  -4.0586,
+  -4.9845,
+  0.0
+ ],
+ "max": [
+  4.0586,
+  5.1,
+  12.36
+ ],
+ "objects": 10,
+ "materials": [
+  "mat_cream",
+  "mat_envelope_cream",
+  "mat_envelope_orange",
+  "mat_flame",
+  "mat_glass",
+  "mat_iron",
+  "mat_lamp",
+  "mat_prop",
+  "mat_prop_tip",
+  "mat_red",
+  "mat_teal",
+  "mat_wood"
+ ],
+ "problems": []
+}

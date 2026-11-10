@@ -1,0 +1,34 @@
+{
+ "asset": "pickaxe",
+ "triangles": 860,
+ "budget": 4000,
+ "per_object": {
+  "pickaxe_handle": 272,
+  "pickaxe_head": 588
+ },
+ "dimensions_m": [
+  0.15,
+  0.6416,
+  1.0031
+ ],
+ "min": [
+  -0.075,
+  -0.41,
+  -0.22
+ ],
+ "max": [
+  0.075,
+  0.2316,
+  0.7831
+ ],
+ "objects": 2,
+ "materials": [
+  "mat_band_yellow",
+  "mat_grip",
+  "mat_grip_ring",
+  "mat_socket",
+  "mat_steel",
+  "mat_steel_edge"
+ ],
+ "problems": []
+}
