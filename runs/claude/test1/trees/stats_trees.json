@@ -1,0 +1,41 @@
+{
+ "asset": "trees",
+ "triangles": 4836,
+ "budget": 18000,
+ "per_object": {
+  "tree_oak": 3056,
+  "tree_pine": 946,
+  "tree_palm": 834
+ },
+ "dimensions_m": [
+  16.0623,
+  4.8995,
+  9.0062
+ ],
+ "min": [
+  -8.2149,
+  -2.4523,
+  -0.0062
+ ],
+ "max": [
+  7.8474,
+  2.4472,
+  9.0
+ ],
+ "objects": 3,
+ "materials": [
+  "mat_bark",
+  "mat_bark_dark",
+  "mat_coconut",
+  "mat_frond",
+  "mat_frond_dark",
+  "mat_leaf",
+  "mat_leaf_core",
+  "mat_leaf_light",
+  "mat_palm_trunk",
+  "mat_pine",
+  "mat_pine_dark",
+  "mat_pine_light"
+ ],
+ "problems": []
+}

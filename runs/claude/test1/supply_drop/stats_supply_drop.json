@@ -1,0 +1,36 @@
+{
+ "asset": "supply_drop",
+ "triangles": 2596,
+ "budget": 15000,
+ "per_object": {
+  "supply_crate": 1828,
+  "supply_parachute": 768
+ },
+ "dimensions_m": [
+  4.1621,
+  4.1621,
+  6.2
+ ],
+ "min": [
+  -2.081,
+  -2.081,
+  0.0
+ ],
+ "max": [
+  2.081,
+  2.081,
+  6.2
+ ],
+ "objects": 2,
+ "materials": [
+  "mat_canopy_cream",
+  "mat_canopy_orange",
+  "mat_glow_blue",
+  "mat_iron",
+  "mat_olive",
+  "mat_olive_light",
+  "mat_rivet",
+  "mat_rope"
+ ],
+ "problems": []
+}

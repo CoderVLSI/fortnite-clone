@@ -241,6 +241,39 @@ def tub(name, size, wall, depth, loc=(0, 0, 0), material=None, inner=None, bevel
     return o
 
 
+def leaf_clump(bm, rng, centre, radius, count, light_from=0.3, cover=1.6, size=(0.55, 0.7)):
+    """Leaf cards laid like scales over a sphere (material 0 = leaf, 1 = light leaf)."""
+    c = Vector(centre)
+    for i in range(count):
+        zz = 1 - (i + 0.5) / count * cover
+        ang = i * 2.39996 + rng.uniform(-0.2, 0.2)
+        rr = math.sqrt(max(0.0, 1 - zz * zz))
+        n = Vector((rr * math.cos(ang), rr * math.sin(ang), zz))
+        down = Vector((0, 0, -1)) - n * n.dot(Vector((0, 0, -1)))
+        if down.length < 0.25:
+            h = Vector((math.cos(ang), math.sin(ang), 0))
+            down = h - n * n.dot(h)
+        t = down.normalized()
+        side = n.cross(t).normalized()
+        tw = rng.uniform(-0.5, 0.5)
+        t, side = (t * math.cos(tw) + side * math.sin(tw)), (side * math.cos(tw) - t * math.sin(tw))
+        L = radius * rng.uniform(*size)
+        W = L * 0.34
+        lift = math.radians(rng.uniform(8, 20))
+        d = t * math.cos(lift) + n * math.sin(lift)
+        base = c + n * radius * 0.86 - t * L * 0.3
+        P = lambda u, w, h=0.0: base + d * L * u + side * W * w + n * L * h
+        vb, vl1, vr1, vm, vl2, vr2, vt = (bm.verts.new(p) for p in (
+            P(0, 0), P(0.3, -1), P(0.3, 1), P(0.45, 0, 0.08), P(0.72, -0.85), P(0.72, 0.85), P(1, 0, -0.03)))
+        mi = 1 if n.z > light_from else 0
+        for tri in ((vb, vm, vl1), (vb, vr1, vm), (vl1, vm, vl2), (vm, vr1, vr2), (vl2, vm, vt), (vm, vr2, vt)):
+            f = bm.faces.new(tri)
+            f.normal_update()
+            if f.normal.dot(n) < 0:
+                f.normal_flip()
+            f.material_index = mi
+
+
 def add_bevel(o, width, seg=2, angle=35):
     m = o.modifiers.new('bevel', 'BEVEL')
     m.width = width
