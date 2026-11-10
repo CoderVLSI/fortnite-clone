@@ -198,6 +198,18 @@ def lathe(name, profile, material=None, loc=(0, 0, 0), seg=16, cap_top=True, cap
     return obj_from_bm(name, bm, material, loc)
 
 
+def hull(name, pts, material=None, loc=(0, 0, 0)):
+    """Convex hull of a point cloud as a clean closed mesh."""
+    bm = bmesh.new()
+    vs = [bm.verts.new(p) for p in pts]
+    r = bmesh.ops.convex_hull(bm, input=vs)
+    junk = list({g for g in r.get('geom_interior', []) + r.get('geom_unused', []) if isinstance(g, bmesh.types.BMVert)})
+    if junk:
+        bmesh.ops.delete(bm, geom=junk, context='VERTS')
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return obj_from_bm(name, bm, material, loc)
+
+
 def add_bevel(o, width, seg=2, angle=35):
     m = o.modifiers.new('bevel', 'BEVEL')
     m.width = width
@@ -382,41 +394,55 @@ VIEWS = {
 }
 
 
-def render_preview(path, views=('side', '3/4', 'front', 'back'), res=640, objs=None):
+def render_preview(path, views=('side', '3/4', 'front', 'back'), res=640, objs=None, aspect=1.0):
+    """One sheet with the requested views side by side; each tile is res*aspect x res
+    and framed on the projected bounding box."""
     from PIL import Image, ImageDraw
+    import itertools
     cam, extra = _setup_render(res)
+    s = bpy.context.scene
+    s.render.resolution_x = int(res * aspect)
+    s.render.resolution_y = res
     lo, hi = bounds(objs)
     c = (lo + hi) / 2
     rad = (hi - lo).length / 2
+    corners = [Vector((x, y, z)) for x, y, z in itertools.product((lo.x, hi.x), (lo.y, hi.y), (lo.z, hi.z))]
     tiles = []
     tmp = os.path.join(os.path.dirname(path), '_tmp_view.png')
     for v in views:
         d = VIEWS[v].normalized()
+        q = (-d).to_track_quat('-Z', 'Y')
+        right = q @ Vector((1, 0, 0))
+        up = q @ Vector((0, 1, 0))
+        w = max(abs((p - c).dot(right)) for p in corners) * 2
+        h = max(abs((p - c).dot(up)) for p in corners) * 2
         cam.data.type = 'ORTHO'
-        cam.data.ortho_scale = rad * 2.25
+        cam.data.ortho_scale = max(w, h * aspect) * 1.12 if aspect >= 1 else max(w / aspect, h) * 1.12
         cam.location = c + d * (rad * 6 + 1)
         cam.data.clip_start = 0.001
         cam.data.clip_end = rad * 14 + 10
-        cam.rotation_euler = (-d).to_track_quat('-Z', 'Y').to_euler()
-        # keep the light relative to the camera so every view is readable
+        cam.rotation_euler = q.to_euler()
         yaw = math.atan2(d.y, d.x) + math.pi / 2
         extra[0].rotation_euler = (math.radians(50), 0, yaw + math.radians(35))
         extra[1].rotation_euler = (math.radians(65), 0, yaw - math.radians(120))
-        bpy.context.scene.render.filepath = tmp
+        s.render.filepath = tmp
         bpy.ops.render.render(write_still=True)
         im = Image.open(tmp).convert('RGB')
         ImageDraw.Draw(im).text((10, 8), v, fill=(255, 255, 255))
         tiles.append(im)
-    sheet = Image.new('RGB', (res * len(tiles), res))
+    tw, th = tiles[0].size
+    cols = len(tiles) if aspect <= 1.3 else 2
+    rows = (len(tiles) + cols - 1) // cols
+    sheet = Image.new('RGB', (tw * cols, th * rows))
     for i, im in enumerate(tiles):
-        sheet.paste(im, (i * res, 0))
+        sheet.paste(im, ((i % cols) * tw, (i // cols) * th))
     sheet.save(path)
     os.remove(tmp)
     for o in extra:
         bpy.data.objects.remove(o)
 
 
-def finish(asset_id, out_dir, budget, views=('side', '3/4', 'front', 'back'), notes=None, per_object_budget=False, ground=False):
+def finish(asset_id, out_dir, budget, views=('side', '3/4', 'front', 'back'), notes=None, per_object_budget=False, ground=False, aspect=1.0, res=640):
     """Clean, shade, paint, check, save .blend, export .glb, render preview, write stats."""
     os.makedirs(out_dir, exist_ok=True)
     objs = mesh_objects()
@@ -463,7 +489,7 @@ def finish(asset_id, out_dir, budget, views=('side', '3/4', 'front', 'back'), no
     bpy.ops.export_scene.gltf(filepath=os.path.join(out_dir, f'{asset_id}.glb'), export_format='GLB',
                               use_selection=True, export_apply=True, export_yup=True,
                               export_vertex_color='ACTIVE', export_all_vertex_colors=False)
-    render_preview(os.path.join(out_dir, f'preview_{asset_id}.png'), views)
+    render_preview(os.path.join(out_dir, f'preview_{asset_id}.png'), views, res=res, aspect=aspect)
     with open(os.path.join(out_dir, f'stats_{asset_id}.json'), 'w') as f:
         json.dump(stats, f, indent=1)
     print('STATS', json.dumps(stats))

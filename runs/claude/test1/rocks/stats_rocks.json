@@ -1,0 +1,34 @@
+{
+ "asset": "rocks",
+ "triangles": 5966,
+ "budget": 7500,
+ "per_object": {
+  "rock_small_flat": 1024,
+  "rock_medium_moss": 1238,
+  "rock_tall": 1496,
+  "rock_wide_moss": 1254,
+  "rock_small": 954
+ },
+ "dimensions_m": [
+  11.0336,
+  1.4205,
+  2.1845
+ ],
+ "min": [
+  -5.2516,
+  -0.7361,
+  0.0
+ ],
+ "max": [
+  5.7821,
+  0.6844,
+  2.1845
+ ],
+ "objects": 5,
+ "materials": [
+  "mat_moss",
+  "mat_moss_dark",
+  "mat_stone"
+ ],
+ "problems": []
+}

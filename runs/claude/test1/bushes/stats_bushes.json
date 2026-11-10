@@ -1,0 +1,32 @@
+{
+ "asset": "bushes",
+ "triangles": 5444,
+ "budget": 8000,
+ "per_object": {
+  "bush_plain": 2344,
+  "bush_berry": 3100
+ },
+ "dimensions_m": [
+  3.314,
+  1.396,
+  1.0867
+ ],
+ "min": [
+  -1.6544,
+  -0.6872,
+  0.0
+ ],
+ "max": [
+  1.6596,
+  0.7088,
+  1.0867
+ ],
+ "objects": 2,
+ "materials": [
+  "mat_berry",
+  "mat_leaf",
+  "mat_leaf_core",
+  "mat_leaf_light"
+ ],
+ "problems": []
+}
