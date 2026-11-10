@@ -1,0 +1,41 @@
+; Engine configuration file.
+config_version=5
+
+[application]
+
+config/name="Island Royale"
+run/main_scene="res://scenes/game.tscn"
+config/features=PackedStringArray("4.5", "GL Compatibility")
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+
+[input]
+
+move_forward={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":87)]}
+move_back={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":83)]}
+move_left={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":65)]}
+move_right={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":68)]}
+jump={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":32)]}
+sprint={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":4194325)]}
+interact={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":69)]}
+reload={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":82)]}
+map={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":77)]}
+pickaxe={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":70)]}
+drop_item={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":71)]}
+fire={"deadzone": 0.2, "events": [Object(InputEventMouseButton,"button_index":1)]}
+aim={"deadzone": 0.2, "events": [Object(InputEventMouseButton,"button_index":2)]}
+
+[layer_names]
+
+3d_physics/layer_1="world"
+3d_physics/layer_2="actors"
+3d_physics/layer_3="items"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+anti_aliasing/quality/msaa_3d=2

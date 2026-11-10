@@ -1,0 +1,19 @@
+[gd_resource type="ShaderMaterial" load_steps=3 format=3]
+
+[ext_resource type="Texture2D" path="res://textures/terrain_detail.tres" id="1_1g8xv"]
+
+[sub_resource type="Shader" id="Shader_u40rm"]
+code = "shader_type spatial;
+uniform sampler2D detail : repeat_enable, filter_linear_mipmap;
+varying vec3 wpos;
+void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+void fragment() {
+	float d = texture(detail, wpos.xz * 0.11).r * 0.6 + texture(detail, wpos.xz * 0.017).r * 0.4;
+	ALBEDO = COLOR.rgb * (0.7 + d * 0.4);
+	ROUGHNESS = 0.92;
+}"
+
+[resource]
+render_priority = 0
+shader = SubResource("Shader_u40rm")
+shader_parameter/detail = ExtResource("1_1g8xv")

@@ -554,11 +554,11 @@ func build_bridges() -> void:
 
 # ----------------------------------------------------------------------------- village (centre)
 
-const HOUSE_SOLID := ["house_shell", "house_roof", "house_porch", "house_stairs", "house_chimney", "house_trim", "house_door_frame"]
+const HOUSE_SOLID := ["house_shell", "house_roof", "house_porch", "house_stairs", "house_chimney", "house_trim", "house_door_frame", "house_furniture"]
 
 
 func place_house(parent: Node, p: Vector2, yaw: float, name: String) -> Node3D:
-	var h := place_asset("house", parent, at(p.x, p.y, 0.0), yaw, name, HOUSE_SOLID, ["house_door", "house_furniture"])
+	var h := place_asset("house", parent, at(p.x, p.y, 0.0), yaw, name, HOUSE_SOLID, ["house_door"])       # furniture needs exact colliders: one hull would span both floors
 	block(p, 8.5)
 	return h
 
