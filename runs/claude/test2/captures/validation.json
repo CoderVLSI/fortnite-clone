@@ -1,0 +1,31 @@
+{
+  "closest_two_spawns_m": 52.6,
+  "collision_shapes": 944,
+  "gpu_instanced_objects": 1841,
+  "house_floor_height_above_ground_m": 0.15,
+  "house_wall_blocks_ray": true,
+  "loot_nodes": 75,
+  "mesh_instances": 920,
+  "spawn_names_ok": true,
+  "spawn_problems": [],
+  "spawns": 30,
+  "static_bodies": 558,
+  "top_level_groups": [
+    "Lighting (2)",
+    "Terrain (2)",
+    "Water (4)",
+    "Bridges (2)",
+    "Zone_Center_Village (31)",
+    "Zone_NorthEast_Farm (177)",
+    "Zone_SouthWest_Industrial (37)",
+    "Towers (3)",
+    "Zone_North_PineForest (23)",
+    "Zone_West_OakForest (2)",
+    "Zone_East_Beach (2)",
+    "Zone_Wild (2)",
+    "Scatter (152)",
+    "Loot (76)",
+    "Sky (1)",
+    "Spawns (30)"
+  ]
+}
