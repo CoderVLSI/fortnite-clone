@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Battle Royale</title>
+<link rel="stylesheet" href="app/style.css">
+<script defer src="app/data.js"></script>
+<script defer src="app/app.js"></script>
+</head>
+<body id="top" data-page="gameplay">
+<aside class="rail">
+<a class="brand" href="index.html"><span class="mark">BR</span><span><b>AI Battle Royale</b><small>Four AIs, one Fortnite brief</small></span></a>
+<nav aria-label="Report sections">
+<div class="nav-label">The test</div>
+<a class="item" href="index.html"><span class="ico" aria-hidden="true">i</span>Setup</a><a class="item" href="brief.html"><span class="ico" aria-hidden="true">&equiv;</span>Brief</a>
+<div class="nav-label">Three stages</div>
+<a class="item" href="assets.html"><span class="ico" aria-hidden="true">1</span>3D assets</a><a class="item" href="map.html"><span class="ico" aria-hidden="true">2</span>Map</a><a class="item" href="gameplay.html" aria-current=page><span class="ico" aria-hidden="true">3</span>Gameplay</a>
+<div class="nav-label">Results</div>
+<a class="item" href="verdict.html"><span class="ico" aria-hidden="true">&#9733;</span>Verdict</a><a class="item" href="costs.html"><span class="ico" aria-hidden="true">$</span>Cost &amp; time</a>
+</nav>
+<div class="rail-models"><div class="model-line" data-m="claude"><span class="dot"></span>Claude Opus 5.5</div><div class="model-line" data-m="gpt"><span class="dot"></span>GPT-6.1 Sol</div><div class="model-line" data-m="gemini"><span class="dot"></span>Gemini 4 Argon</div><div class="model-line" data-m="muse"><span class="dot"></span>Muse Wonder</div></div>
+</aside>
+<div class="page"><div class="wrap wide">
+<h1>AI Battle Royale &middot; stage 3, gameplay</h1>
+<p class="meta">October 2026 &middot; Claude Opus 5.5, GPT-6.1 Sol, Gemini 4 Argon, Muse Wonder &middot; Blender 5.1 and Unity 6</p>
+
+<section class="hero"><div class="lab">The game itself: one player against 24 bots</div><div class="num">&asymp; 93 h</div>
+<p>of active agent work went into this stage, about two thirds of the whole project. Hand-played recordings come first because they are the only ones with a person at the controls. Then full matches, key moments and every mechanic side by side, with the reviewer's notes under each video. Click a note to play the moment it refers to.</p></section>
+<div id="stage-tiles"></div>
+<div class="bar" id="filter" style="margin-top:18px"></div>
+
+<section class="pin" id="hand-block"><span class="pin-label">Pinned &middot; played by hand</span><h2>A person playing the games</h2><p class="sub">The only recordings not made by the models' own scripts: a person at the keyboard, so slow moments and bugs stay in. Everything else on this page was captured by the models.</p><div id="hand"></div></section>
+
+<section class="pin" id="matches-block"><span class="pin-label">Pinned &middot; recorded by the models</span><h2>Full matches</h2><p class="sub">Each model's autopilot plays a whole match through normal input. The conditions differ, so read the line under each one.</p><div id="matches"></div></section>
+
+<h2>Key moments</h2>
+<p class="sub">The comparisons worth seeing if you only have a few minutes.</p>
+<div id="moments"></div>
+
+<section id="staged-block"><h2>Gemini's staged match</h2>
+<p class="sub">Gemini's original full match was staged: a hidden director eliminated bots off camera, teleported opponents to the player and finished the final bot, so it always ended with exactly 8 eliminations at 166 seconds. After the rework the autopilot plays the match unstaged. Compare the two.</p>
+<div id="staged"></div></section>
+
+<h2>Mechanic by mechanic</h2>
+<p class="sub">Isolated demonstrations recorded by the models, with no active opponents. Initial placement and supplies are fixtures; actions go through normal player input.</p>
+<div id="mechanics"></div>
+
+<h2>Feature showcases</h2>
+<p class="sub">Short edited showcases the models recorded of their own work, plus a cut of how each game evolved. The features demonstrated differ between models.</p>
+<div id="showcases"></div>
+
+<details class="fold" id="archive"><summary>All other recordings (<span id="archive-count"></span>): drafts, validation takes and earlier versions</summary><div class="in"><div class="bar"><input class="search" id="q" type="search" placeholder="Search titles, descriptions and notes" aria-label="Search recordings"><span class="small" id="archive-found"></span></div><div id="archive-grid"></div></div></details>
+
+<footer class="flow"><span><a href=map.html>&larr; Map</a></span><a href="#top">Back to top</a><span><a href=verdict.html>Verdict &rarr;</a></span></footer>
+</div></div>
+<dialog id="viewer" aria-label="Viewer"><div class="dlg-head"><h2></h2><button class="btn ghost" data-close>Close &times;</button></div><div class="dlg-body"></div></dialog>
+<noscript>This report needs JavaScript to show its recordings.</noscript>
+</body>
+</html>

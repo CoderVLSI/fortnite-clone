@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Battle Royale</title>
+<link rel="stylesheet" href="app/style.css">
+<script defer src="app/data.js"></script>
+<script defer src="app/app.js"></script>
+</head>
+<body id="top" data-page="assets">
+<aside class="rail">
+<a class="brand" href="index.html"><span class="mark">BR</span><span><b>AI Battle Royale</b><small>Four AIs, one Fortnite brief</small></span></a>
+<nav aria-label="Report sections">
+<div class="nav-label">The test</div>
+<a class="item" href="index.html"><span class="ico" aria-hidden="true">i</span>Setup</a><a class="item" href="brief.html"><span class="ico" aria-hidden="true">&equiv;</span>Brief</a>
+<div class="nav-label">Three stages</div>
+<a class="item" href="assets.html" aria-current=page><span class="ico" aria-hidden="true">1</span>3D assets</a><a class="item" href="map.html"><span class="ico" aria-hidden="true">2</span>Map</a><a class="item" href="gameplay.html"><span class="ico" aria-hidden="true">3</span>Gameplay</a>
+<div class="nav-label">Results</div>
+<a class="item" href="verdict.html"><span class="ico" aria-hidden="true">&#9733;</span>Verdict</a><a class="item" href="costs.html"><span class="ico" aria-hidden="true">$</span>Cost &amp; time</a>
+</nav>
+<div class="rail-models"><div class="model-line" data-m="claude"><span class="dot"></span>Claude Opus 5.5</div><div class="model-line" data-m="gpt"><span class="dot"></span>GPT-6.1 Sol</div><div class="model-line" data-m="gemini"><span class="dot"></span>Gemini 4 Argon</div><div class="model-line" data-m="muse"><span class="dot"></span>Muse Wonder</div></div>
+</aside>
+<div class="page"><div class="wrap wide">
+<h1>AI Battle Royale &middot; stage 1, 3D assets</h1>
+<p class="meta">October 2026 &middot; Claude Opus 5.5, GPT-6.1 Sol, Gemini 4 Argon, Muse Wonder &middot; Blender 5.1 and Unity 6</p>
+
+<section class="hero"><div class="lab">Same 21 reference sheets, Blender and Python only</div><div class="num">5.9&times;</div>
+<p>is the cost gap between the most and the least expensive model here: &asymp; $62.51 for Muse and &asymp; $10.66 for GPT, with Claude at &asymp; $61.66. On screen the sets land much closer together than that. Hover a card to spin the model, click it to open the video.</p></section>
+<div id="stage-tiles"></div>
+<h2>What stands out</h2>
+<ul class="clean">
+<li><a href="#asset-drop_vehicle">Drop vehicle</a>: the priciest asset of the whole stage at $10.00 for Muse, while GPT's cost $0.63.</li>
+<li><a href="#asset-house">House</a>: the brief asks for usable doors and interiors, so open the interior views from the menu on each card.</li>
+<li><a href="#asset-modular_kit">Building modules</a>: the pieces the game's building system should reuse. GPT later rebuilt them from scratch instead, see <a href="gameplay.html#m-building">Stage 3</a>.</li>
+<li><a href="#asset-shotgun">Shotgun</a> and <a href="#asset-house">house</a> from Muse: the .glb export lost the material colors, so these two were rendered from the .blend.</li>
+</ul>
+<h2>All asset sets</h2>
+<div class="bar" id="filter"></div>
+<div class="bar" id="groups"></div>
+<div id="asset-rows"></div>
+<details class="fold"><summary>Cost per asset set</summary><div class="in"><p class="small">Selected attempt per model, darker means more expensive. Hover a cell for time and tokens.</p><div class="table-scroll" id="heat"></div></div></details>
+
+<footer class="flow"><span><a href=brief.html>&larr; Brief</a></span><a href="#top">Back to top</a><span><a href=map.html>Map &rarr;</a></span></footer>
+</div></div>
+<dialog id="viewer" aria-label="Viewer"><div class="dlg-head"><h2></h2><button class="btn ghost" data-close>Close &times;</button></div><div class="dlg-body"></div></dialog>
+<noscript>This report needs JavaScript to show its recordings.</noscript>
+</body>
+</html>

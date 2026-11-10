@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Battle Royale</title>
+<link rel="stylesheet" href="app/style.css">
+<script defer src="app/data.js"></script>
+<script defer src="app/app.js"></script>
+</head>
+<body id="top" data-page="brief">
+<aside class="rail">
+<a class="brand" href="index.html"><span class="mark">BR</span><span><b>AI Battle Royale</b><small>Four AIs, one Fortnite brief</small></span></a>
+<nav aria-label="Report sections">
+<div class="nav-label">The test</div>
+<a class="item" href="index.html"><span class="ico" aria-hidden="true">i</span>Setup</a><a class="item" href="brief.html" aria-current=page><span class="ico" aria-hidden="true">&equiv;</span>Brief</a>
+<div class="nav-label">Three stages</div>
+<a class="item" href="assets.html"><span class="ico" aria-hidden="true">1</span>3D assets</a><a class="item" href="map.html"><span class="ico" aria-hidden="true">2</span>Map</a><a class="item" href="gameplay.html"><span class="ico" aria-hidden="true">3</span>Gameplay</a>
+<div class="nav-label">Results</div>
+<a class="item" href="verdict.html"><span class="ico" aria-hidden="true">&#9733;</span>Verdict</a><a class="item" href="costs.html"><span class="ico" aria-hidden="true">$</span>Cost &amp; time</a>
+</nav>
+<div class="rail-models"><div class="model-line" data-m="claude"><span class="dot"></span>Claude Opus 5.5</div><div class="model-line" data-m="gpt"><span class="dot"></span>GPT-6.1 Sol</div><div class="model-line" data-m="gemini"><span class="dot"></span>Gemini 4 Argon</div><div class="model-line" data-m="muse"><span class="dot"></span>Muse Wonder</div></div>
+</aside>
+<div class="page"><div class="wrap wide">
+<h1>AI Battle Royale &middot; the brief</h1>
+<p class="meta">October 2026 &middot; Claude Opus 5.5, GPT-6.1 Sol, Gemini 4 Argon, Muse Wonder &middot; Blender 5.1 and Unity 6</p>
+
+<p class="sub">The prompts as the models received them. <code>&lt;MODEL&gt;</code> stands for each model's own short id, and the paths are the ones used on the machine that ran the test. Asset messages combine the shared prompt with one spec card.</p>
+<div class="prompt-tabs" role="tablist" aria-label="Prompt sections"><button type="button" role="tab" id="prompt-tab-assets" data-prompt-tab="assets" aria-controls="prompt-assets" aria-selected="true" tabindex="0"><span class="prompt-tab-icon"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 9 5v8l-9 5-9-5V8l9-5Z"/><path d="m3 8 9 5 9-5m-9 5v8m-4.5-15.5 9 5"/></svg></span><span>3D assets</span></button><button type="button" role="tab" id="prompt-tab-map" data-prompt-tab="map" aria-controls="prompt-map" aria-selected="false" tabindex="-1"><span class="prompt-tab-icon"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 3 6 3 6-3v15l-6 3-6-3-6 3V6l6-3Zm0 0v15m6-12v15"/></svg></span><span>Map creation</span></button><button type="button" role="tab" id="prompt-tab-game" data-prompt-tab="game" aria-controls="prompt-game" aria-selected="false" tabindex="-1"><span class="prompt-tab-icon"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10a4 4 0 0 1 3.9 3.2l1 5a3 3 0 0 1-5 2.8L14 16h-4l-2.9 2a3 3 0 0 1-5-2.8l1-5A4 4 0 0 1 7 7Z"/><path d="M7 10v4m-2-2h4m6-1h.01M18 13h.01"/></svg></span><span>Game</span></button></div>
+<article class="game-prompt has-grid" id="prompt-assets" role="tabpanel" aria-labelledby="prompt-tab-assets" tabindex="0">
+<h2 class="prompt-section-title" id="prompt-assets-title">3D assets</h2>
+<section><h3>Shared prompt</h3>
+<h4>TOOLS</h4>
+<ul><li>Blender 5.1 is installed at: C:\Program Files\Blender Foundation\Blender 5.1\blender.exe</li><li>Work only by writing Python (bpy) scripts and running them headless: blender.exe --background --python &lt;script.py&gt;</li><li>Everything must be built procedurally from scratch in your script: primitives, modifiers, bmesh, curves, geometry nodes are all fine.</li><li>Forbidden: downloading models or textures, image-to-3D or text-to-3D tools, add-ons that generate assets, tracing the reference image as a texture on a plane. You may look at the reference image as much as you want.</li></ul>
+<h4>WORK FOLDER</h4>
+<ul><li>C:\Users\&lt;USER&gt;\Documents\work\videos\ai-battle-royale\runs\&lt;MODEL&gt;\test1<br>  Replace &lt;MODEL&gt; with a short lowercase id of the AI model you are (for example claude-opus-5-5, gpt-6-sol, grok-4-7, muse-wonder).</li><li>Create a subfolder named after the asset id, containing:<br>  build_&lt;id&gt;.py    the script that builds the asset from an empty scene<br>  &lt;id&gt;.blend       the saved scene<br>  &lt;id&gt;.glb         glTF binary export<br>  preview_&lt;id&gt;.png one image with 4 views side by side: side, 3/4, front, back (or the views named in the asset message)<br>  report_&lt;id&gt;.md   short report</li><li>Re-running build_&lt;id&gt;.py must rebuild everything from zero and overwrite the outputs.</li></ul>
+<h4>ART STYLE (match the reference image)</h4>
+<ul><li>Stylized cartoon battle royale look: chunky, slightly exaggerated proportions, big readable shapes, soft rounded bevels on every hard edge, low amount of small detail.</li><li>Clean surfaces, no dirt. Hand-painted feel is achieved with flat base colors plus soft gradients (vertex colors or a simple gradient in the material), lighter top surfaces and slightly darker bottoms.</li><li>Take colors from the reference image. Use Principled BSDF materials only, roughness about 0.6-0.8, metallic 0 for painted parts and up to 0.6 for bare metal. No image textures unless you generate them procedurally in the script and pack them into the .glb.</li></ul>
+<h4>TECHNICAL RULES</h4>
+<ul><li>Units: meters. Z is up. The front of the asset faces -Y (Blender front view). Weapons: barrel points to -Y.</li><li>Real-world scale as given in the asset message (tolerance 10%).</li><li>Origin: bottom center at Z=0 for props and buildings; for weapons and hand-held items the origin is at the grip where the hand holds it.</li><li>Apply all modifiers and transforms before export. Clean meshes: no loose vertices, no zero-area faces, normals facing outward, smooth or flat shading chosen per part so it looks clean.</li><li>Name every object and material meaningfully (e.g. rifle_body, rifle_magazine, mat_tan).</li><li>Parts that move in a game (lids, doors, triggers when asked) must be separate objects with the pivot placed where they rotate.</li><li>Stay under the triangle budget given in the asset message.</li><li>Export .glb with +Y up (default glTF settings), modifiers applied, materials included.</li></ul>
+<h4>PROCESS</h4>
+<ul><li>Look at the reference image first and write a short plan: parts list, dimensions, colors.</li><li>Build, render the preview, then LOOK at your own preview and compare it with the reference. Fix obvious differences in proportions, colors and missing parts before you report. At most 3 self-correction loops per asset.</li><li>When done, reply with: the path to preview_&lt;id&gt;.png, the triangle count, and one sentence on what is weakest.</li></ul>
+</section>
+<div class="spec-grid"><section id="asset-prompt-grenade"><h3>Grenade</h3><figure class="prompt-reference"><img src="images/references/grenade-53bb4f1ecffe.png" alt="Grenade reference" loading="lazy" decoding="async"></figure><dl class="prompt-asset-specs"><div><dt>Size</dt><dd>about 0.11 m tall, body diameter 0.08 m.</dd></div><div><dt>Triangle budget</dt><dd>2,500.</dd></div></dl></section>
+<section id="asset-prompt-bushes"><h3>Bushes</h3><figure class="prompt-reference"><img src="images/references/bushes-29948b7366f2.png" alt="Bushes reference" loading="lazy" decoding="async"></figure><dl class="prompt-asset-specs"><div><dt>Size</dt><dd>Each bush: about 1.4 m wide and 1.1 m tall.</dd></div><div><dt>Triangle budget</dt><dd>4,000 per bush.</dd></div></dl></section>
+<section id="asset-prompt-rocks"><h3>Rocks</h3><figure class="prompt-reference"><img src="images/references/rocks-b5fc0f015a72.png" alt="Rocks reference" loading="lazy" decoding="async"></figure><dl class="prompt-asset-specs"><div><dt>Size</dt><dd>Five rocks: about 0.4, 1.0, 2.2, 1.0 (wide and flat), and 0.7 m tall.</dd></div><div><dt>Triangle budget</dt><dd>1,500 per rock.</dd></div></dl></section>
+<section id="asset-prompt-farm_props"><h3>Farm props</h3><figure class="prompt-reference"><img src="images/references/farm-props-27544a47a5e0.png" alt="Farm props reference" loading="lazy" decoding="async"></figure><dl class="prompt-asset-specs"><div><dt>Size</dt><dd>Fence: 2.0 m long, 1.1 m tall; barrel: 0.9 m tall, 0.65 m wide; crate: 0.8 m cube.</dd></div><div><dt>Triangle budget</dt><dd>2,000 per prop.</dd></div></dl></section>
+<section id="asset-prompt-ammo_box"><h3>Ammo box</h3><figure class="prompt-reference"><img src="images/references/ammo-box-281d8cf01b2d.png" alt="Ammo box reference" loading="lazy" decoding="async"></figure><dl class="prompt-asset-specs"><div><dt>Size</dt><dd>about 0.50 m wide (X), 0.25 m deep (Y), 0.25 m tall without the handle.</dd></div><div><dt>Triangle budget</dt><dd>5,000.</dd></div></dl></section>
+<section id="asset-prompt-med_kit"><h3>Medkit</h3><figure class="prompt-reference"><img src="images/references/med-kit-d62f03cd670a.png" alt="Medkit reference" loading="lazy" decoding="async"></figure><dl class="prompt-asset-specs"><div><dt>Size</dt><dd>case about 0.45 m wide (X), 0.30 m deep (Y), 0.15 m tall; bandage roll 0.08 m diameter, 0.10 m tall.</dd></div><div><dt>Triangle budget</dt><dd>4,000.</dd></div></dl></section>
+<section id="asset-prompt-shield_potion"><h3>Shield potion</h3><figure class="prompt-reference"><img src="images/references/shield-potion-6636a0594648.png" alt="Shield potion reference" loading="lazy" decoding="async"></figure><dl class="prompt-asset-specs"><div><dt>Size</dt><dd>about 0.25 m tall, 0.22 m wide.</dd></div><div><dt>Triangle budget</dt><dd>4,000.</dd></div></dl></section>
+<section id="asset-prompt-treasure_chest"><h3>Chest</h3><figure class="prompt-reference"><img src="images/references/treasure-chest-bb5a2f9ceb1e.png" alt="Chest reference" loading="lazy" decoding="async"></figure><dl class="prompt-asset-specs"><div><dt>Size</dt><dd>about 1.00 m wide (X), 0.65 m deep (Y), 0.75 m tall with the lid closed.</dd></div><div><dt>Triangle budget</dt><dd>8,000.</dd></div></dl></section>
+<section id="asset-prompt-pistol"><h3>Pistol</h3><figure class="prompt-reference"><img src="images/references/pistol-39fc2401f5fe.png" alt="Pistol reference" loading="lazy" decoding="async"></figure><dl class="prompt-asset-specs"><div><dt>Size</dt><dd>about 0.24 m long (Y), 0.16 m tall.</dd></div><div><dt>Triangle budget</dt><dd>3,000.</dd></div></dl></section>
+<section id="asset-prompt-shotgun"><h3>Shotgun</h3><figure class="prompt-reference"><img src="images/references/shotgun-b7a345012db9.png" alt="Shotgun reference" loading="lazy" decoding="async"></figure><dl class="prompt-asset-specs"><div><dt>Size</dt><dd>about 0.95 m long (Y).</dd></div><div><dt>Triangle budget</dt><dd>6,000.</dd></div></dl></section>
+<section id="asset-prompt-assault_rifle"><h3>Assault rifle</h3><figure class="prompt-reference"><img src="images/references/assault-rifle-0477cf649513.png" alt="Assault rifle reference" loading="lazy" decoding="async"></figure><dl class="prompt-asset-specs"><div><dt>Size</dt><dd>about 0.85 m long (Y), 0.25 m tall including the sight.</dd></div><div><dt>Triangle budget</dt><dd>8,000.</dd></div></dl></section>
+<section id="asset-prompt-sniper_rifle"><h3>Sniper rifle</h3><figure class="prompt-reference"><img src="images/references/sniper-rifle-fd7afdf6a369.png" alt="Sniper rifle reference" loading="lazy" decoding="async"></figure><dl class="prompt-asset-specs"><div><dt>Size</dt><dd>about 1.25 m long (Y).</dd></div><div><dt>Triangle budget</dt><dd>9,000.</dd></div></dl></section>
+<section id="asset-prompt-rocket_launcher"><h3>Rocket launcher</h3><figure class="prompt-reference"><img src="images/references/rocket-launcher-c81a6d216a8f.png" alt="Rocket launcher reference" loading="lazy" decoding="async"></figure><dl class="prompt-asset-specs"><div><dt>Size</dt><dd>about 1.30 m long (Y), tube diameter about 0.16 m, front flare about 0.26 m.</dd></div><div><dt>Triangle budget</dt><dd>8,000.</dd></div></dl></section>
+<section id="asset-prompt-supply_drop"><h3>Supply drop</h3><figure class="prompt-reference"><img src="images/references/supply-drop-46166e0478e0.png" alt="Supply drop reference" loading="lazy" decoding="async"></figure><dl class="prompt-asset-specs"><div><dt>Size</dt><dd>crate about 1.20 m cube; parachute canopy about 4 m in diameter, its top about 5 m above the crate.</dd></div><div><dt>Triangle budget</dt><dd>15,000 for everything.</dd></div></dl></section>
+<section id="asset-prompt-trees"><h3>Trees</h3><figure class="prompt-reference"><img src="images/references/trees-b9ae8a2fe211.png" alt="Trees reference" loading="lazy" decoding="async"></figure><dl class="prompt-asset-specs"><div><dt>Size</dt><dd>Oak: about 6 m tall; pine: about 9 m; palm: about 6 m.</dd></div><div><dt>Triangle budget</dt><dd>6,000 per tree.</dd></div></dl></section>
+<section id="asset-prompt-modular_kit"><h3>Building modules</h3><figure class="prompt-reference"><img src="images/references/modular-kit-b9e196e5b4c8.png" alt="Building modules reference" loading="lazy" decoding="async"></figure><dl class="prompt-asset-specs"><div><dt>Size</dt><dd>every piece fits a 4 m x 4 m cell. Wall: 4 m wide, 4 m tall, 0.25 m thick. Floor: 4 x 4 m, 0.25 m thick. Ramp: rises 4 m over 4 m. Pyramid roof: 4 x 4 m base, about 2 m tall.</dd></div><div><dt>Triangle budget</dt><dd>2,500 per piece.</dd></div></dl></section>
+<section id="asset-prompt-lookout_tower"><h3>Lookout tower</h3><figure class="prompt-reference"><img src="images/references/lookout-tower-4317e3d39598.png" alt="Lookout tower reference" loading="lazy" decoding="async"></figure><dl class="prompt-asset-specs"><div><dt>Size</dt><dd>about 10 m tall to the roof tip, platform about 3 m x 3 m at 7 m height, legs spread to about 4 m x 4 m at the base.</dd></div><div><dt>Triangle budget</dt><dd>12,000.</dd></div></dl></section>
+<section id="asset-prompt-warehouse"><h3>Warehouse</h3><figure class="prompt-reference"><img src="images/references/warehouse-5bb937b9145f.png" alt="Warehouse reference" loading="lazy" decoding="async"></figure><dl class="prompt-asset-specs"><div><dt>Size</dt><dd>about 14 m wide (X), 10 m deep (Y), 5 m walls, gabled roof ridge about 7 m.</dd></div><div><dt>Triangle budget</dt><dd>20,000.</dd></div></dl></section>
+<section id="asset-prompt-house"><h3>House</h3><figure class="prompt-reference"><img src="images/references/house-0d7ba1c767ca.png" alt="House reference" loading="lazy" decoding="async"></figure><dl class="prompt-asset-specs"><div><dt>Size</dt><dd>footprint about 8 m x 7 m, two floors of 3 m each, gabled roof ridge about 9 m above the ground.</dd></div><div><dt>Triangle budget</dt><dd>30,000.</dd></div></dl></section>
+<section id="asset-prompt-pickaxe"><h3>Pickaxe</h3><figure class="prompt-reference"><img src="images/references/pickaxe-v2-21468056c97e.png" alt="Pickaxe reference" loading="lazy" decoding="async"></figure><dl class="prompt-asset-specs"><div><dt>Size</dt><dd>about 1.0 m tall (handle along Z), head about 0.6 m wide.</dd></div><div><dt>Triangle budget</dt><dd>4,000.</dd></div></dl></section>
+<section id="asset-prompt-drop_vehicle"><h3>Drop vehicle</h3><figure class="prompt-reference"><img src="images/references/drop-vehicle-v2-9f7aa2e3379d.png" alt="Drop vehicle reference" loading="lazy" decoding="async"></figure><dl class="prompt-asset-specs"><div><dt>Size</dt><dd>bus about 10 m long (Y), 2.6 m wide, 3.2 m tall; balloon about 8 m wide and 6 m tall, its bottom about 3 m above the bus roof; total height about 13 m.</dd></div><div><dt>Triangle budget</dt><dd>30,000.</dd></div></dl></section>
+</div></article><article class="game-prompt" id="prompt-map" role="tabpanel" aria-labelledby="prompt-tab-map" tabindex="0"><h2 class="prompt-section-title" id="prompt-map-title">Map creation</h2><figure class="prompt-reference prompt-map-reference"><img src="images/references/island-map-topdown-7598c17e01bc.png" alt="Original island map reference" loading="lazy" decoding="async"></figure><p>Build one game level in Unity, fully on your own, starting right now. Do not ask for confirmation and do not wait for further messages: plan, build, capture, self-check and report in this one turn.</p>
+<p>YOUR MODEL ID: &lt;MODEL&gt;<br>(Use it in every path below. Never read or use another model&#x27;s folders.)</p>
+<h3>TOOLS</h3>
+<ul><li>Unity 6000.5.6f1: C:\Program Files\Unity\Hub\Editor\6000.5.6f1\Editor\Unity.exe</li><li>Work only through C# editor scripts run in batch mode, for example: Unity.exe -batchmode -projectPath &lt;project&gt; -executeMethod &lt;Class.Method&gt; -quit -logFile &lt;log&gt;. Add -nographics only for steps that do not render; screenshots and video capture need graphics. Read the log after every run.</li><li>Create the project with: Unity.exe -batchmode -nographics -createProject &lt;project&gt; -quit -logFile &lt;log&gt;. Keep the default Built-in Render Pipeline.</li><li>Unity does not import .glb out of the box. Either add the official glTFast package (com.unity.cloud.gltfast) to Packages/manifest.json, or convert the .glb files to FBX with a Blender script. Make sure materials and colors survive the import.</li><li>Also available: Blender 5.1 at C:\Program Files\Blender Foundation\Blender 5.1\blender.exe and ffmpeg on PATH.</li><li>Allowed: official Unity packages from the Unity registry. Forbidden: Asset Store or downloaded models, textures, terrains or prefabs, and any AI image or 3D generation. Every object in the level comes from your own test 1 assets or is built procedurally by your scripts (terrain, water, roads, bridges).</li></ul>
+<h3>PATHS</h3>
+<ul><li>Unity project (short path on purpose, keep it): C:\Users\&lt;USER&gt;\unity-br\&lt;MODEL&gt;-test2</li><li>Your test 1 assets: C:\Users\&lt;USER&gt;\Documents\work\videos\ai-battle-royale\runs\&lt;MODEL&gt;\test1\&lt;asset_id&gt;\ (21 assets, .glb files)</li><li>Map reference: C:\Users\&lt;USER&gt;\Documents\work\videos\ai-battle-royale\references\test2-map\island-map-topdown.png</li><li>Asset reference sheets: C:\Users\&lt;USER&gt;\Documents\work\videos\ai-battle-royale\references\test1-assets\</li><li>Outputs: C:\Users\&lt;USER&gt;\Documents\work\videos\ai-battle-royale\runs\&lt;MODEL&gt;\test2\</li></ul>
+<h3>SCALE AND LAYOUT</h3>
+<ul><li>The island is about 400 x 400 m inside a 600 x 600 m ocean area. The map has a 6 x 6 grid over the whole image, so one grid cell is about 67 m in this level.</li><li>Take from the map: zone positions, coastline shape, lake, river, road network, bridge and tower positions.</li><li>Do NOT take building sizes from the map: buildings there are drawn about 4 times too large. Every asset keeps its real test 1 size. Trees and rocks may vary in scale by up to 25 percent for variety.</li></ul>
+<h3>TERRAIN AND WATER (procedural)</h3>
+<ul><li>Unity Terrain with a scripted heightmap: hills and the lake basin in the north, a flat village center, gentle farm fields, a sandy east beach, rocky cliffs on the south point, high ground under the towers, a river channel from the lake to the south coast.</li><li>Terrain layers made in code (grass, sand, dirt road, rock): generate their textures as Texture2D colors or noise and save them as assets.</li><li>Ocean at sea level around the island, water surfaces for the lake and the river, two wooden bridges over the river.</li></ul>
+<h3>ZONES (positions from the map)</h3>
+<ul><li>North: pine forest of at least 150 pines, the lake, rock clusters including the moss rocks.</li><li>North-east: farm with crop fields, fence lines made of tiled fence segments, barrels, crates, one house as the farmhouse.</li><li>East: beach with at least 30 palms.</li><li>Center: village of 6 to 8 houses around a plaza, at least 4 treasure chests inside the houses.</li><li>South-west: industrial yard with the 3 warehouses, crates, ammo boxes, a paved yard, and one small fort built from the modular kit (walls, floors, ramps, roofs).</li><li>West: oak forest of at least 120 oaks with a few clearings.</li><li>South cliff point and two other hilltops: the 3 lookout towers.</li><li>Everywhere: bushes and rocks; loot spread across the island (treasure chests, ammo boxes, med kits, shield potions, and every weapon type lying on the ground at least 3 times); one landed supply drop; the cargo blimp flying 80 m above the island.</li></ul>
+<h3>GAME READINESS</h3>
+<ul><li>Colliders on the terrain, buildings, rocks, tree trunks and props: a player must not fall through anything or walk through walls. Doors and interiors of the test 1 assets stay usable.</li><li>30 player spawn points: empty GameObjects named Spawn_01 to Spawn_30, spread over the island on walkable ground, never inside objects.</li><li>Hierarchy grouped by zone, one prefab per asset, static batching or GPU instancing for vegetation.</li><li>Performance target: 60+ FPS at 1920x1080 on this PC. Measure the average frame time over at least 600 frames of the flythrough, in a Windows build or in play mode, and report the method.</li><li>Save the scene as Assets/Scenes/Island.unity. Re-running your build method must rebuild the whole level from zero.</li></ul></article><article aria-labelledby="prompt-tab-game" class="game-prompt" id="prompt-game" role="tabpanel" tabindex="0">
+<h2 class="prompt-section-title" id="prompt-game-title">Game</h2>
+<section>
+<h3>Battle royale core</h3>
+<p>One player against 24 bots, with the full match loop. Fortnite is the main reference: the goal is to make the game as close to Fortnite as possible in gameplay, visuals, movement, combat, building, UI and overall feel.</p>
+<ul>
+<li>Drop: the bus is the cargo blimp. It crosses the island 150 m up and covers 600 m in 40 s.
+    <ul>
+<li>The player jumps whenever they want. Skydiving lets you steer and dive.</li>
+<li>The glider opens on its own 42 m above the ground.</li>
+</ul>
+</li>
+<li>Storm: five phases with timers. Each new safe circle lies inside the previous one.
+    <ul>
+<li>Damage outside the circle goes around shields and grows from 1 to 10 HP per second.</li>
+<li>The storm wall is animated purple; the screen turns purple when you are inside the storm.</li>
+</ul>
+</li>
+<li>Inventory: five slots plus the pickaxe.
+    <ul>
+<li>Five rarities from grey to gold. Each step adds 6 % damage and makes reloads 5 % faster.</li>
+<li>Ammo types: light, medium, heavy, shells, rockets.</li>
+<li>Grenades stack. Heals and shields take time to use.</li>
+</ul>
+</li>
+<li>Loot:
+    <ul>
+<li>118 loot spots, chests and ammo boxes.</li>
+<li>Items on the ground glow in their rarity colour; ammo and free-slot items are picked up by walking over them.</li>
+<li>Eliminated players drop everything.</li>
+</ul>
+</li>
+<li>Bots: they move on a navigation mesh with line-of-sight perception and skill-based reaction and aim. They:
+    <ul>
+<li>arm up first, pick a weapon by range, strafe and fire in bursts;</li>
+<li>heal, loot and leave the storm in time;</li>
+<li>hunt other players late in the match.</li>
+</ul>
+</li>
+<li>HUD in the Fortnite layout:
+    <ul>
+<li>health and shield, hotbar, ammo, compass, minimap and full map with the storm;</li>
+<li>kill feed, damage numbers, hit markers, arcs showing the direction of incoming damage;</li>
+<li>spectating after elimination and the Victory Royale screen.</li>
+</ul>
+</li>
+</ul>
+</section>
+<section>
+<h3>Building, harvesting, destruction</h3>
+<ul>
+<li>Building: the 12 modular_kit pieces (wall, floor, stairs, cone in wood, brick and metal).
+    <ul>
+<li>Pieces snap to a 4 m grid with 4 m storeys. Keys are Q / Z / C / V.</li>
+<li>A see-through preview shows where the piece goes. RMB cycles the material; holding LMB keeps placing (turbo build).</li>
+<li>A piece costs 10 of a material. Its hit points climb while it builds: wood 150, brick 300, metal 450.</li>
+</ul>
+</li>
+<li>Harvesting: the pickaxe hits the point under the crosshair.
+    <ul>
+<li>A blue weak point appears after each hit and gives double damage and double materials.</li>
+<li>Material counters with +N popups.</li>
+</ul>
+</li>
+<li>Destruction: 1,791 level parts break (trees, rocks, crates, doors, roofs and more).
+    <ul>
+<li>Explosions do 2.5 times their damage to structures.</li>
+<li>When a piece breaks, everything that loses its connection to the ground collapses in a chain.</li>
+</ul>
+</li>
+<li>Bots: they harvest when they run short of materials and drop a wall towards whoever is shooting them.</li>
+</ul>
+</section>
+<section>
+<h3>Movement</h3>
+<ul>
+<li>Crouch: Left Ctrl toggles it. The character gets lower, slower and steadier, and a crouched player can hide behind low cover.</li>
+<li>Slide: Ctrl while sprinting. The slide speeds up downhill, slows down on flat ground and ends in a crouch.</li>
+<li>Mantle: Space at a ledge from 0.75 to 2.3 m high pulls the character up onto it. It also works from the water onto a steep bank.</li>
+<li>Swimming: in the lake, the river and the sea.
+    <ul>
+<li>The weapon is put away. Standing still treads water; moving swims.</li>
+<li>Entering the water makes a splash, swimming leaves foam, and a fall into deep water does no damage.</li>
+</ul>
+</li>
+<li>Bots: they crouch while healing and sometimes in fights at range, cross rivers by swimming, and mantle when they jump at a ledge.</li>
+</ul>
+</section>
+<section>
+<h3>Build fights and smarter bots</h3>
+<p>This is what makes Fortnite fights look like Fortnite.</p>
+<ul>
+<li>Piece editing:
+    <ul>
+<li>An edit grid on a wall, floor, stairs or cone.</li>
+<li>Selected tiles are cut out to make windows, doors, half walls, turned ramps and cones with an opening.</li>
+<li>A reset key restores the piece.</li>
+</ul>
+</li>
+<li>Bot build fighting:
+    <ul>
+<li>a ramp rush to take height on an enemy;</li>
+<li>a quick 1x1 box when healing or under fire;</li>
+<li>replacing walls that get shot out;</li>
+<li>peeking out of an edited window.</li>
+</ul>
+</li>
+<li>Bot difficulty: easy, normal and sweaty, from aim, reaction time and build speed.</li>
+<li>Material economy: bots harvest early in the match so they have materials for fights.</li>
+</ul>
+</section>
+<section>
+<h3>Items, traversal and world events</h3>
+<ul>
+<li>Supply drops: they fall from the sky under a balloon, using the existing supply_drop asset. They have a smoke trail and better loot.</li>
+<li>Mobility items:
+    <ul>
+<li>launch pads, placed and thrown;</li>
+<li>zip lines between hills and towers;</li>
+<li>a rift that sends you back into skydiving.</li>
+</ul>
+</li>
+<li>More consumables: small and big shield potions, a healing drink, and an apple or mushroom picked up from the ground.</li>
+</ul>
+</section>
+<section>
+<h3>Front end and presentation</h3>
+<ul>
+<li>Menus:
+    <ul>
+<li>a main menu with the character on a podium;</li>
+<li>a pre-match lobby with a ready button;</li>
+<li>pause and settings (sensitivity, key bindings, graphics);</li>
+<li>an end-of-match summary.</li>
+</ul>
+</li>
+<li>Emotes and dances from Mixamo, with an emote wheel.</li>
+<li>Sound: a proper sound pass.</li>
+</ul>
+</section>
+</article>
+
+<footer class="flow"><span><a href=index.html>&larr; Setup</a></span><a href="#top">Back to top</a><span><a href=assets.html>3D assets &rarr;</a></span></footer>
+</div></div>
+<dialog id="viewer" aria-label="Viewer"><div class="dlg-head"><h2></h2><button class="btn ghost" data-close>Close &times;</button></div><div class="dlg-body"></div></dialog>
+<noscript>This report needs JavaScript to show its recordings.</noscript>
+</body>
+</html>

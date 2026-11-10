@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Battle Royale</title>
+<link rel="stylesheet" href="app/style.css">
+<script defer src="app/data.js"></script>
+<script defer src="app/app.js"></script>
+</head>
+<body id="top" data-page="map">
+<aside class="rail">
+<a class="brand" href="index.html"><span class="mark">BR</span><span><b>AI Battle Royale</b><small>Four AIs, one Fortnite brief</small></span></a>
+<nav aria-label="Report sections">
+<div class="nav-label">The test</div>
+<a class="item" href="index.html"><span class="ico" aria-hidden="true">i</span>Setup</a><a class="item" href="brief.html"><span class="ico" aria-hidden="true">&equiv;</span>Brief</a>
+<div class="nav-label">Three stages</div>
+<a class="item" href="assets.html"><span class="ico" aria-hidden="true">1</span>3D assets</a><a class="item" href="map.html" aria-current=page><span class="ico" aria-hidden="true">2</span>Map</a><a class="item" href="gameplay.html"><span class="ico" aria-hidden="true">3</span>Gameplay</a>
+<div class="nav-label">Results</div>
+<a class="item" href="verdict.html"><span class="ico" aria-hidden="true">&#9733;</span>Verdict</a><a class="item" href="costs.html"><span class="ico" aria-hidden="true">$</span>Cost &amp; time</a>
+</nav>
+<div class="rail-models"><div class="model-line" data-m="claude"><span class="dot"></span>Claude Opus 5.5</div><div class="model-line" data-m="gpt"><span class="dot"></span>GPT-6.1 Sol</div><div class="model-line" data-m="gemini"><span class="dot"></span>Gemini 4 Argon</div><div class="model-line" data-m="muse"><span class="dot"></span>Muse Wonder</div></div>
+</aside>
+<div class="page"><div class="wrap wide">
+<h1>AI Battle Royale &middot; stage 2, map</h1>
+<p class="meta">October 2026 &middot; Claude Opus 5.5, GPT-6.1 Sol, Gemini 4 Argon, Muse Wonder &middot; Blender 5.1 and Unity 6</p>
+
+<section class="hero"><div class="lab">One top-down reference map, four islands</div><div class="num">400 &times; 400 m</div>
+<p>Each model built the island inside a 600 x 600 m ocean area, from its own stage 1 assets at their real sizes, with procedural terrain and water. Zones, coastline, lake, river, roads, bridges and towers come from the map.</p></section>
+<div id="stage-tiles"></div>
+<h2>What the brief asked for</h2>
+<div class="split">
+<div class="prompt-reference" style="margin:0"><img data-zoom src="images/references/island-map-topdown-7598c17e01bc.png" alt="Reference map of the island" loading="lazy" style="cursor:zoom-in"></div>
+<div class="facts" style="margin:0">
+<div>North</div><div>Pine forest of at least 150 pines, the lake, rock clusters.</div>
+<div>North-east</div><div>Farm with crop fields, fence lines, one farmhouse.</div>
+<div>East</div><div>Beach with at least 30 palms.</div>
+<div>Center</div><div>Village of 6 to 8 houses around a plaza, chests inside.</div>
+<div>South-west</div><div>Industrial yard with 3 warehouses and a small fort from the modular kit.</div>
+<div>West</div><div>Oak forest of at least 120 oaks with clearings.</div>
+<div>Hills</div><div>3 lookout towers: the south cliff point and two hilltops.</div>
+<div>Game ready</div><div>Colliders, 30 spawn points, loot across the island, a target of 60+ FPS at 1920x1080.</div>
+</div>
+</div>
+<h2>The four islands</h2>
+<div id="islands"></div>
+<h2>Key moments</h2>
+<div id="moments"></div>
+<h2 id="island-notes-title">Reviewer's notes</h2>
+<p class="sub">Click a note to play the moment it refers to.</p>
+<div id="island-notes"></div>
+
+<footer class="flow"><span><a href=assets.html>&larr; 3D assets</a></span><a href="#top">Back to top</a><span><a href=gameplay.html>Gameplay &rarr;</a></span></footer>
+</div></div>
+<dialog id="viewer" aria-label="Viewer"><div class="dlg-head"><h2></h2><button class="btn ghost" data-close>Close &times;</button></div><div class="dlg-body"></div></dialog>
+<noscript>This report needs JavaScript to show its recordings.</noscript>
+</body>
+</html>

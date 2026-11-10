@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Battle Royale</title>
+<link rel="stylesheet" href="app/style.css">
+<script defer src="app/data.js"></script>
+<script defer src="app/app.js"></script>
+</head>
+<body id="top" data-page="verdict">
+<aside class="rail">
+<a class="brand" href="index.html"><span class="mark">BR</span><span><b>AI Battle Royale</b><small>Four AIs, one Fortnite brief</small></span></a>
+<nav aria-label="Report sections">
+<div class="nav-label">The test</div>
+<a class="item" href="index.html"><span class="ico" aria-hidden="true">i</span>Setup</a><a class="item" href="brief.html"><span class="ico" aria-hidden="true">&equiv;</span>Brief</a>
+<div class="nav-label">Three stages</div>
+<a class="item" href="assets.html"><span class="ico" aria-hidden="true">1</span>3D assets</a><a class="item" href="map.html"><span class="ico" aria-hidden="true">2</span>Map</a><a class="item" href="gameplay.html"><span class="ico" aria-hidden="true">3</span>Gameplay</a>
+<div class="nav-label">Results</div>
+<a class="item" href="verdict.html" aria-current=page><span class="ico" aria-hidden="true">&#9733;</span>Verdict</a><a class="item" href="costs.html"><span class="ico" aria-hidden="true">$</span>Cost &amp; time</a>
+</nav>
+<div class="rail-models"><div class="model-line" data-m="claude"><span class="dot"></span>Claude Opus 5.5</div><div class="model-line" data-m="gpt"><span class="dot"></span>GPT-6.1 Sol</div><div class="model-line" data-m="gemini"><span class="dot"></span>Gemini 4 Argon</div><div class="model-line" data-m="muse"><span class="dot"></span>Muse Wonder</div></div>
+</aside>
+<div class="page"><div class="wrap">
+<h1>AI Battle Royale &middot; the verdict</h1>
+<p class="meta">October 2026 &middot; Claude Opus 5.5, GPT-6.1 Sol, Gemini 4 Argon, Muse Wonder &middot; Blender 5.1 and Unity 6</p>
+
+<section class="hero"><div class="lab">The reviewer's overall call</div>
+<p class="quote" style="color:var(--text);font-size:16px;border:0;padding:6px 0 0;margin:0">Overall, I feel <strong>GPT performed the worst</strong>. It has been working very poorly for me lately. <strong>Claude was the best</strong>; I would put <strong>Gemini second</strong> and <strong>Muse Wonder third</strong>. Muse Wonder was used through OpenRouter.</p></section>
+<div class="ranks" id="ranks"></div>
+<p class="sub">Below are some comments on things I noticed while watching the videos. Most of the videos were recorded by the AI models. My own recordings are in <a href="gameplay.html#hand-block">Manual recordings</a>. Clickable words in the comments link to specific timestamps in the videos. <a href="gameplay.html#archive">More recordings</a> brings together the videos the models made during development to report their progress, so you can see how the games evolved.</p>
+<h2>Topic by topic</h2>
+<p class="sub">Each square is one reviewer note. Click it to play the moment, or click a topic to see its videos. The counts show how the notes split, they are not a score.</p>
+<div class="legend"><span><span class="tone positive">+</span>Good</span><span><span class="tone mixed">~</span>Mixed</span><span><span class="tone negative">&minus;</span>Weak</span><span><span class="tone neutral">&middot;</span>Neutral</span></div>
+<div id="scoreboard"></div>
+<h2>Every comment</h2>
+<div id="full-review"></div>
+
+<footer class="flow"><span><a href=gameplay.html>&larr; Gameplay</a></span><a href="#top">Back to top</a><span><a href=costs.html>Cost &amp; time &rarr;</a></span></footer>
+</div></div>
+<dialog id="viewer" aria-label="Viewer"><div class="dlg-head"><h2></h2><button class="btn ghost" data-close>Close &times;</button></div><div class="dlg-body"></div></dialog>
+<noscript>This report needs JavaScript to show its recordings.</noscript>
+</body>
+</html>

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Battle Royale</title>
+<link rel="stylesheet" href="app/style.css">
+<script defer src="app/data.js"></script>
+<script defer src="app/app.js"></script>
+</head>
+<body id="top" data-page="costs">
+<aside class="rail">
+<a class="brand" href="index.html"><span class="mark">BR</span><span><b>AI Battle Royale</b><small>Four AIs, one Fortnite brief</small></span></a>
+<nav aria-label="Report sections">
+<div class="nav-label">The test</div>
+<a class="item" href="index.html"><span class="ico" aria-hidden="true">i</span>Setup</a><a class="item" href="brief.html"><span class="ico" aria-hidden="true">&equiv;</span>Brief</a>
+<div class="nav-label">Three stages</div>
+<a class="item" href="assets.html"><span class="ico" aria-hidden="true">1</span>3D assets</a><a class="item" href="map.html"><span class="ico" aria-hidden="true">2</span>Map</a><a class="item" href="gameplay.html"><span class="ico" aria-hidden="true">3</span>Gameplay</a>
+<div class="nav-label">Results</div>
+<a class="item" href="verdict.html"><span class="ico" aria-hidden="true">&#9733;</span>Verdict</a><a class="item" href="costs.html" aria-current=page><span class="ico" aria-hidden="true">$</span>Cost &amp; time</a>
+</nav>
+<div class="rail-models"><div class="model-line" data-m="claude"><span class="dot"></span>Claude Opus 5.5</div><div class="model-line" data-m="gpt"><span class="dot"></span>GPT-6.1 Sol</div><div class="model-line" data-m="gemini"><span class="dot"></span>Gemini 4 Argon</div><div class="model-line" data-m="muse"><span class="dot"></span>Muse Wonder</div></div>
+</aside>
+<div class="page"><div class="wrap">
+<h1>AI Battle Royale &middot; cost &amp; time</h1>
+<p class="meta">October 2026 &middot; Claude Opus 5.5, GPT-6.1 Sol, Gemini 4 Argon, Muse Wonder &middot; Blender 5.1 and Unity 6</p>
+
+<section class="hero"><div class="lab">All four models together</div><div class="num">&asymp; $700</div>
+<p>for &asymp; 135 hours of active agent work and &asymp; 1.55 billion tokens. These figures are scenario estimates at API unit rates, not measured usage or verified spending.</p></section>
+<div class="row4" id="score-cards" style="margin-top:14px"></div>
+<h2>Paying more did not mean waiting longer</h2>
+<p class="sub">Claude cost the most and needed the fewest hours. GPT cost the least and took about 18 hours more. Hours are active work added up, not calendar time.</p>
+<div id="legend"></div>
+<div class="split"><div class="panel"><div id="scatter"></div></div><div><div class="row2" id="glance" style="margin-bottom:12px"></div><div class="panel"><h4>Cost per hour of active work</h4><p class="hint">Whole project</p><div id="rate"></div></div></div></div>
+<h2>Money by stage</h2>
+<div id="money"></div>
+<h2>Time by stage</h2>
+<div id="time"></div>
+<h2>Tokens</h2>
+<div id="tokens"></div>
+<h2>Exact numbers</h2>
+<details class="fold"><summary>Every token count, rate, time and cost</summary><div class="in" id="exact"></div></details>
+<h2>How these were counted</h2>
+<ul class="clean small" id="notes"></ul>
+
+<footer class="flow"><span><a href=verdict.html>&larr; Verdict</a></span><a href="#top">Back to top</a><span></span></footer>
+</div></div>
+<dialog id="viewer" aria-label="Viewer"><div class="dlg-head"><h2></h2><button class="btn ghost" data-close>Close &times;</button></div><div class="dlg-body"></div></dialog>
+<noscript>This report needs JavaScript to show its recordings.</noscript>
+</body>
+</html>
