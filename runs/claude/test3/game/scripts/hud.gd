@@ -19,9 +19,7 @@ func setup(g: Node) -> void:
 	font = ThemeDB.fallback_font
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var img := Image.load_from_file(ProjectSettings.globalize_path("res://textures/minimap.png"))
-	if img:
-		map_tex = ImageTexture.create_from_image(img)
+	map_tex = load("res://textures/minimap.png")
 
 
 func add_damage_number(at: Vector3, amount: float, shielded: bool, killed: bool) -> void:

@@ -10,10 +10,15 @@ var terrain
 
 func load_grid(t) -> void:
 	terrain = t
-	var path := ProjectSettings.globalize_path("res://textures/navgrid.png")
-	var img := Image.load_from_file(path) if FileAccess.file_exists(path) else null
+	# loaded as an imported resource so it also works from an exported, packed build
+	if not ResourceLoader.exists("res://textures/navgrid.png"):
+		return
+	var tex: Texture2D = load("res://textures/navgrid.png")
+	var img := tex.get_image()
 	if img == null:
 		return
+	if img.is_compressed():
+		img.decompress()
 	var n := HALF * 2
 	astar.region = Rect2i(0, 0, n, n)
 	astar.cell_size = Vector2.ONE
