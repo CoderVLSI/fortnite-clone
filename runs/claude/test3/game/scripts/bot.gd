@@ -31,6 +31,7 @@ var goal_container = null
 var goal_is_pickup := false
 var roam_until := 0.0
 var goal_since := 0.0
+var crouch_bias := false
 var progress_t := 0.0
 var progress_d := 1e9
 var avoid: Array = []                   # [position, until] goals that could not be reached
@@ -74,7 +75,7 @@ func _physics_process(delta: float) -> void:
 			a.aim_pitch = 0.0
 			a.in_move = Vector2(0, 1) if d > 4.0 else Vector2.ZERO
 			a.in_dive = a.state == Actor.State.SKYDIVE and d < 60.0
-		Actor.State.GROUND:
+		Actor.State.GROUND, Actor.State.SWIM:
 			_ground(delta)
 
 
@@ -84,6 +85,10 @@ func _ground(delta: float) -> void:
 		think = 0.2
 		_perceive()
 		_decide()
+		# crouch while healing, and now and then when fighting at range
+		if a.state == Actor.State.GROUND and not a.sliding:
+			var far: bool = mode == "fight" and target != null and a.global_position.distance_to(target.global_position) > 35.0
+			a.set_crouched(mode == "heal" or (far and crouch_bias))
 	a.in_fire = false
 	a.in_sprint = true
 	a.in_move = Vector2.ZERO
@@ -119,6 +124,7 @@ func _perceive() -> void:
 	if best != null:
 		if best != target:
 			first_seen = game.match_time
+			crouch_bias = game.rng.randf() < 0.5
 		target = best
 		target_seen = game.match_time
 		last_known = best.global_position
@@ -271,7 +277,7 @@ func _nearest_enemy() -> Actor:
 	var best: Actor = null
 	var bd := 1e9
 	for o in game.actors:
-		if o != a and o.alive() and o.state == Actor.State.GROUND:
+		if o != a and o.alive() and (o.state == Actor.State.GROUND or o.state == Actor.State.SWIM):
 			var d := a.global_position.distance_squared_to(o.global_position)
 			if d < bd:
 				bd = d
@@ -338,7 +344,7 @@ func _follow(delta: float) -> void:
 # ----------------------------------------------------------------------------- combat
 
 func _fight(delta: float) -> void:
-	var tp := target.global_position + Vector3(0, 1.15, 0)
+	var tp := target.centre()
 	var from := a.eye()
 	var dist := from.distance_to(tp)
 	var visible = game.match_time - target_seen < 0.45

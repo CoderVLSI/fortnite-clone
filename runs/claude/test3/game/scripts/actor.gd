@@ -3,7 +3,7 @@
 class_name Actor
 extends CharacterBody3D
 
-enum State { BLIMP, SKYDIVE, GLIDE, GROUND, DEAD }
+enum State { BLIMP, SKYDIVE, GLIDE, GROUND, DEAD, SWIM }
 
 const WALK := 5.2
 const SPRINT := 7.6
@@ -12,6 +12,15 @@ const GRAVITY := 24.0
 const GLIDER_HEIGHT := 42.0
 const EYE := Vector3(0, 1.55, 0)
 const PICKAXE_DAMAGE := 20.0
+const CROUCH_SPEED := 3.0
+const SWIM_SPEED := 3.6
+const STAND_H := 1.8
+const CROUCH_H := 1.2
+const SWIM_IN := 1.3                     # water this deep at the feet: start swimming
+const SWIM_OUT := 1.0                    # shallower than this with ground underfoot: walk again
+const FLOAT_DEPTH := 1.25                # feet this far under the surface while swimming
+const MANTLE_MIN := 0.75
+const MANTLE_MAX := 2.3
 
 var game: Node
 var display_name := "Player"
@@ -31,6 +40,17 @@ var mats := {"wood": 0, "brick": 0, "metal": 0}
 var build_piece := ""                    # "" = not building, else wall / floor / stairs / cone
 var build_mat := "wood"
 var build_cd := 0.0
+var crouched := false
+var sliding := false
+var slide_t := 0.0
+var in_crouch := false                   # one-shot: crouch key pressed
+var mantle_t := -1.0                     # >= 0 while pulling up onto a ledge
+var mantle_from := Vector3.ZERO
+var mantle_to := Vector3.ZERO
+var mantle_dur := 0.45
+var jump_air_t := 99.0                   # seconds since the last jump, for mantling mid-jump
+var foam_t := 0.0
+var shape_node: CollisionShape3D
 
 # control inputs, written by the player or the bot brain every physics tick
 var in_move := Vector2.ZERO              # x = right, y = forward, relative to aim_yaw
@@ -69,6 +89,7 @@ func setup(g: Node, nm: String, player: bool, outfit: Color, accent: Color) -> v
 	cs.shape = cap
 	cs.position = Vector3(0, 0.9, 0)
 	add_child(cs)
+	shape_node = cs
 	body = Character.new()
 	add_child(body)
 	body.build(outfit, accent, [Color(0.95, 0.78, 0.62), Color(0.78, 0.56, 0.4), Color(0.5, 0.34, 0.24)][nm.hash() % 3])
@@ -80,7 +101,12 @@ func alive() -> bool:
 
 
 func eye() -> Vector3:
-	return global_position + EYE
+	return global_position + Vector3(0, 1.05 if (crouched or sliding) else EYE.y, 0)
+
+
+func centre() -> Vector3:
+	## Where to aim at this actor's body.
+	return global_position + Vector3(0, 0.62 if (crouched or sliding) else 1.15, 0)
 
 
 func aim_dir() -> Vector3:
@@ -97,27 +123,35 @@ func _physics_process(delta: float) -> void:
 	if state == State.DEAD:
 		return
 	fire_cd = maxf(fire_cd - delta, 0.0)
-	match state:
-		State.BLIMP:
-			global_position = game.blimp_seat()
-			velocity = Vector3.ZERO
-			if in_jump:
-				jump_from_blimp()
-		State.SKYDIVE:
-			var fall := -52.0 if in_dive else -30.0
-			var steer := 9.0 if in_dive else 16.0
-			_air_move(delta, fall, steer, 3.0)
-			if height_above_ground() <= GLIDER_HEIGHT:
-				state = State.GLIDE
-		State.GLIDE:
-			_air_move(delta, -7.5, 14.0, 4.0)
-			if is_on_floor() or global_position.y < 0.3:
-				state = State.GROUND
-		State.GROUND:
-			_ground_move(delta)
+	if mantle_t >= 0.0:
+		_mantle_step(delta)
+	else:
+		match state:
+			State.BLIMP:
+				global_position = game.blimp_seat()
+				velocity = Vector3.ZERO
+				if in_jump:
+					jump_from_blimp()
+			State.SKYDIVE:
+				var fall := -52.0 if in_dive else -30.0
+				var steer := 9.0 if in_dive else 16.0
+				_air_move(delta, fall, steer, 3.0)
+				if height_above_ground() <= GLIDER_HEIGHT:
+					state = State.GLIDE
+			State.GLIDE:
+				_air_move(delta, -7.5, 14.0, 4.0)
+				if depth() > SWIM_IN:
+					_enter_water()
+				elif is_on_floor():
+					state = State.GROUND
+					fall_start = global_position.y
+			State.GROUND:
+				_ground_move(delta)
+			State.SWIM:
+				_swim_move(delta)
 	body.rotation.y = lerp_angle(body.rotation.y, aim_yaw, clampf(delta * 14.0, 0.0, 1.0))
 	body.animate(delta, self)
-	if state == State.GROUND:
+	if state == State.GROUND and mantle_t < 0.0:
 		_combat(delta)
 	elif using > 0.0:
 		cancel_use()
@@ -146,30 +180,249 @@ func _air_move(delta: float, fall: float, speed: float, accel: float) -> void:
 	move_and_slide()
 
 
+func depth() -> float:
+	## How far the feet are below the water surface here (negative when dry or above it).
+	var s: float = game.terrain.water_surface(global_position.x, global_position.z)
+	return s - global_position.y if s > -999.0 else -1.0
+
+
+# ----------------------------------------------------------------------------- walking, crouching, sliding
+
 func _ground_move(delta: float) -> void:
-	var in_water := global_position.y < -0.9
-	var speed := (SPRINT if in_sprint and in_move.y > 0.1 and using <= 0.0 else WALK) * (0.55 if in_water else 1.0) * (0.6 if using > 0.0 else 1.0)
-	var w := _wish() * speed
-	var acc := 60.0 if is_on_floor() else 14.0
-	velocity.x = move_toward(velocity.x, w.x, acc * delta)
-	velocity.z = move_toward(velocity.z, w.z, acc * delta)
-	if in_water:
-		velocity.y = move_toward(velocity.y, 1.5 if global_position.y < -1.2 else 0.0, 30.0 * delta)   # float at the surface
-	elif is_on_floor():
+	if in_crouch:
+		in_crouch = false
+		_crouch_pressed()
+	if sliding:
+		_slide(delta)
+	else:
+		var speed := WALK
+		if crouched:
+			speed = CROUCH_SPEED
+		elif in_sprint and in_move.y > 0.1 and using <= 0.0:
+			speed = SPRINT
+		if using > 0.0:
+			speed *= 0.6
+		var w := _wish() * speed
+		var acc := 60.0 if is_on_floor() else 14.0
+		velocity.x = move_toward(velocity.x, w.x, acc * delta)
+		velocity.z = move_toward(velocity.z, w.z, acc * delta)
+	if is_on_floor():
 		if in_jump:
-			velocity.y = JUMP
+			if not _try_mantle(MANTLE_MAX):
+				sliding = false
+				if crouched:
+					set_crouched(false)
+				velocity.y = JUMP
+				jump_air_t = 0.0
 		fall_start = global_position.y
 	else:
 		velocity.y -= GRAVITY * delta
+		jump_air_t += delta
+		# jumping into a ledge pulls you up onto it
+		if jump_air_t < 0.75 and in_move.y > 0.3 and _try_mantle(MANTLE_MAX, fall_start):
+			in_jump = false
+			return
 	in_jump = false
 	var was_air := not is_on_floor()
 	move_and_slide()
-	if was_air and is_on_floor():
-		var drop := fall_start - global_position.y
-		if drop > 9.0:
-			hit((drop - 9.0) * 7.0, null, true, global_position)
 	if is_on_floor():
+		if was_air:
+			var drop := fall_start - global_position.y
+			if drop > 9.0:
+				hit((drop - 9.0) * 7.0, null, true, global_position)
 		fall_start = global_position.y
+		jump_air_t = 99.0
+	if depth() > SWIM_IN:
+		_enter_water()
+
+
+func _crouch_pressed() -> void:
+	if not is_on_floor():
+		return
+	if sliding:
+		sliding = false
+		crouched = true
+		return
+	var hv := Vector2(velocity.x, velocity.z).length()
+	if not crouched and hv > 6.2 and in_move.y > 0.3:
+		# sprinting: slide instead, with a small push
+		sliding = true
+		slide_t = 0.0
+		_set_height(CROUCH_H)
+		var dir := Vector3(velocity.x, 0, velocity.z).normalized()
+		var sp := maxf(hv, 9.0)
+		velocity.x = dir.x * sp
+		velocity.z = dir.z * sp
+		return
+	set_crouched(not crouched)
+
+
+func set_crouched(v: bool) -> void:
+	if v == crouched:
+		return
+	if not v and not _headroom():
+		return                                          # no room to stand up here
+	crouched = v
+	_set_height(CROUCH_H if v else STAND_H)
+
+
+func _set_height(h: float) -> void:
+	var cap := shape_node.shape as CapsuleShape3D
+	if absf(cap.height - h) < 0.01:
+		return
+	cap.height = h
+	shape_node.position.y = h / 2.0
+
+
+func _headroom() -> bool:
+	return game.ray(global_position + Vector3(0, 1.1, 0), global_position + Vector3(0, STAND_H + 0.05, 0), self, 1).is_empty()
+
+
+func _slide(delta: float) -> void:
+	## Gravity along the slope speeds the slide up downhill; friction slows it on the flat.
+	slide_t += delta
+	var n := get_floor_normal() if is_on_floor() else Vector3.UP
+	var g := Vector3(0, -GRAVITY, 0)
+	var along := g - n * g.dot(n)
+	var hv := Vector3(velocity.x, 0, velocity.z)
+	hv += Vector3(along.x, 0, along.z) * delta * 1.1
+	var spd := maxf(hv.length() - 3.2 * delta, 0.0)
+	var w := _wish()
+	if spd > 0.1:
+		var cur := hv.normalized()
+		if w.length() > 0.2:
+			cur = cur.lerp(w.normalized(), clampf(delta * 1.4, 0.0, 1.0)).normalized()
+		hv = cur * minf(spd, 17.0)
+	velocity.x = hv.x
+	velocity.z = hv.z
+	if (spd < 3.2 and slide_t > 0.3) or slide_t > 6.0:
+		sliding = false
+		crouched = true                                  # a slide always ends in a crouch
+
+
+# ----------------------------------------------------------------------------- mantling
+
+func _try_mantle(max_h: float, base_y := INF) -> bool:
+	## Pull up onto a ledge MANTLE_MIN..max_h above base_y (the ground the jump started from).
+	var fwd := _wish()
+	if fwd.length() < 0.2:
+		fwd = Vector3(-sin(aim_yaw), 0, -cos(aim_yaw))
+	fwd = fwd.normalized()
+	var feet := global_position
+	var base: float = feet.y if base_y == INF else base_y
+	var wall := {}
+	for hgt in [0.45, 1.0, 1.6]:
+		var o: Vector3 = feet + Vector3(0, hgt, 0)
+		var r: Dictionary = game.ray(o, o + fwd * 1.0, self, 1)
+		if not r.is_empty() and r.normal.y < 0.6:
+			wall = r
+			break
+	if wall.is_empty():
+		return false
+	var d := Vector2(wall.position.x - feet.x, wall.position.z - feet.z).length()
+	var probe := Vector3(feet.x, base + max_h + 0.6, feet.z) + fwd * (d + 0.5)
+	var down: Dictionary = game.ray(probe, Vector3(probe.x, maxf(base + MANTLE_MIN - 0.05, feet.y + 0.15), probe.z), self, 1)
+	if down.is_empty() or down.normal.y < 0.7:
+		return false
+	var h: float = down.position.y - feet.y
+	var above_base: float = down.position.y - base
+	if above_base < MANTLE_MIN or above_base > max_h:
+		return false
+	# the way over the edge is clear, and there is room to stand on top
+	if not game.ray(feet + Vector3(0, h + 0.5, 0), down.position + Vector3(0, 0.5, 0), self, 1).is_empty():
+		return false
+	var q := PhysicsShapeQueryParameters3D.new()
+	var cap := CapsuleShape3D.new()
+	cap.radius = 0.28
+	cap.height = 1.2
+	q.shape = cap
+	q.collision_mask = 1
+	q.transform = Transform3D(Basis.IDENTITY, down.position + Vector3(0, 0.68, 0))
+	if not get_world_3d().direct_space_state.intersect_shape(q, 1).is_empty():
+		return false
+	mantle_from = feet
+	mantle_to = down.position + Vector3(0, 0.03, 0) + fwd * 0.15
+	mantle_t = 0.0
+	mantle_dur = 0.28 + maxf(h, 0.3) * 0.12
+	velocity = Vector3.ZERO
+	sliding = false
+	crouched = false
+	_set_height(STAND_H)
+	cancel_use()
+	return true
+
+
+func _mantle_step(delta: float) -> void:
+	mantle_t += delta
+	var k := clampf(mantle_t / mantle_dur, 0.0, 1.0)
+	var up := clampf(k / 0.6, 0.0, 1.0)
+	var fw := clampf((k - 0.35) / 0.65, 0.0, 1.0)
+	var p := mantle_from
+	p.y = lerpf(mantle_from.y, mantle_to.y, 1.0 - (1.0 - up) * (1.0 - up))
+	p.x = lerpf(mantle_from.x, mantle_to.x, fw)
+	p.z = lerpf(mantle_from.z, mantle_to.z, fw)
+	global_position = p
+	if k >= 1.0:
+		mantle_t = -1.0
+		if state == State.SWIM:
+			_leave_water()
+		state = State.GROUND
+		var dir := Vector3(mantle_to.x - mantle_from.x, 0, mantle_to.z - mantle_from.z).normalized()
+		velocity = dir * 2.0
+		fall_start = global_position.y
+		jump_air_t = 99.0
+
+
+# ----------------------------------------------------------------------------- swimming
+
+func _enter_water() -> void:
+	if state == State.SWIM:
+		return
+	var impact := -velocity.y
+	state = State.SWIM
+	sliding = false
+	crouched = false
+	_set_height(STAND_H)
+	cancel_use()
+	reloading = 0.0
+	in_fire = false
+	build_piece = ""
+	body.hold("")                                       # the weapon is put away
+	fall_start = global_position.y                      # deep water: no fall damage
+	var s: float = game.terrain.water_surface(global_position.x, global_position.z)
+	game.fx_splash(Vector3(global_position.x, s, global_position.z), clampf(impact / 10.0, 0.6, 2.5))
+
+
+func _leave_water() -> void:
+	state = State.GROUND
+	fall_start = global_position.y
+	_refresh_held()
+
+
+func _swim_move(delta: float) -> void:
+	var surf: float = game.terrain.water_surface(global_position.x, global_position.z)
+	var d := surf - global_position.y
+	if surf < -999.0 or (d < SWIM_OUT and is_on_floor()):
+		_leave_water()
+		return
+	var w := _wish() * SWIM_SPEED
+	velocity.x = move_toward(velocity.x, w.x, 10.0 * delta)
+	velocity.z = move_toward(velocity.z, w.z, 10.0 * delta)
+	# float with the head above water; standing still just treads water
+	var want_y := surf - FLOAT_DEPTH + sin(game.match_time * 2.2) * 0.04
+	velocity.y = clampf((want_y - global_position.y) * 4.0, -6.0, 3.0)
+	if in_jump:
+		in_jump = false
+		if _try_mantle(MANTLE_MAX + 0.5):               # climb out onto a steep bank
+			return
+	move_and_slide()
+	var hv := Vector2(velocity.x, velocity.z)
+	if hv.length() > 1.0:
+		foam_t -= delta
+		if foam_t <= 0.0:
+			foam_t = 0.14
+			var back := Vector3(hv.x, 0, hv.y).normalized() * -0.5
+			game.fx_foam(Vector3(global_position.x, surf + 0.03, global_position.z) + back)
 
 
 # ----------------------------------------------------------------------------- inventory
@@ -427,7 +680,7 @@ func _shoot(it: Dictionary, d: Dictionary) -> void:
 	fire_cd = 1.0 / d.rate
 	var from := eye()
 	var moving := Vector2(velocity.x, velocity.z).length() > 1.0
-	var spread := deg_to_rad(d.spread * (1.35 if moving else 1.0) * (1.6 if not is_on_floor() else 1.0)) * spread_mul
+	var spread := deg_to_rad(d.spread * (1.35 if moving else 1.0) * (1.6 if not is_on_floor() else 1.0) * (0.7 if crouched else 1.0)) * spread_mul
 	var base := aim_dir()
 	if is_player:
 		# aim where the camera looks, then shoot from the eye towards that point
@@ -446,7 +699,7 @@ func _shoot(it: Dictionary, d: Dictionary) -> void:
 			var victim: Actor = res.collider
 			var dist := from.distance_to(endp)
 			var dmg := Items.damage(it) * (1.0 if dist <= d.range else clampf(1.0 - (dist - d.range) / d.range, 0.35, 1.0))
-			if endp.y - victim.global_position.y > 1.45 and d.pellets == 1:
+			if endp.y > victim.eye().y - 0.12 and d.pellets == 1:
 				dmg *= 1.5                                    # headshot
 			victim.hit(dmg, self, false, global_position)
 			game.on_damage_dealt(self, victim, dmg, endp)

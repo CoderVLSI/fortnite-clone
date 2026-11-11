@@ -227,7 +227,7 @@ func destroy(e: Dictionary) -> void:
 	if weak_entry == e:
 		weak_entry = null
 		weak.visible = false
-	_debris_burst(e.pos + Vector3(0, 1.0, 0), e.color, 10 if e.kind != "level" else 7)
+	burst(e.pos + Vector3(0, 1.0, 0), e.color, 10 if e.kind != "level" else 7)
 	match e.kind:
 		"tree":
 			var mm: MultiMeshInstance3D = e.mm
@@ -618,15 +618,16 @@ func _physics_process(delta: float) -> void:
 			n.queue_free()
 
 
-func _debris_burst(at: Vector3, col: Color, n: int) -> void:
+func burst(at: Vector3, col: Color, n: int, up_min := 3.0, up_max := 8.0, size := 1.0) -> void:
+	## Small pieces thrown into the air: debris from broken things, droplets from a splash.
 	if game.autotest:
 		return
-	var key := "debris_" + col.to_html()
+	var key := "debris_%s_%.2f" % [col.to_html(), size]
 	if not mat_cache.has(key):
 		var m := StandardMaterial3D.new()
 		m.albedo_color = col
 		var bm := BoxMesh.new()
-		bm.size = Vector3(0.28, 0.2, 0.36)
+		bm.size = Vector3(0.28, 0.2, 0.36) * size
 		bm.material = m
 		mat_cache[key] = bm
 	for i in n:
@@ -635,7 +636,7 @@ func _debris_burst(at: Vector3, col: Color, n: int) -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		game.fx_root.add_child(mi)
 		mi.global_position = at + Vector3(game.rng.randf_range(-0.8, 0.8), game.rng.randf_range(-0.6, 0.8), game.rng.randf_range(-0.8, 0.8))
-		var v := Vector3(game.rng.randf_range(-4, 4), game.rng.randf_range(3, 8), game.rng.randf_range(-4, 4))
+		var v := Vector3(game.rng.randf_range(-4, 4), game.rng.randf_range(up_min, up_max), game.rng.randf_range(-4, 4))
 		debris.append({"node": mi, "vel": v, "life": game.rng.randf_range(0.8, 1.4)})
 
 

@@ -15,6 +15,7 @@ var show_map := false
 var prompt := ""
 var prompt_target = null
 var zoom := 0.0
+var cam_up := 1.9
 var touch_use := false
 var look_entry = null                    # the breakable thing under the crosshair, for the HUD
 var touch: Control                       # on-screen controls, only on touch devices
@@ -91,6 +92,8 @@ func _physics_process(delta: float) -> void:
 		a.in_sprint = not Input.is_action_pressed("aim")           # run by default, walk while aiming
 		if Input.is_action_just_pressed("jump"):
 			a.in_jump = true
+		if Input.is_action_just_pressed("crouch"):
+			a.in_crouch = true
 		a.in_dive = a.state == Actor.State.SKYDIVE and (pitch < -0.75 or Input.is_action_pressed("sprint"))
 		for bk in [["build_wall", "wall"], ["build_floor", "floor"], ["build_stairs", "stairs"], ["build_cone", "cone"]]:
 			if Input.is_action_just_pressed(bk[0]):
@@ -141,6 +144,8 @@ func _touch_input() -> void:
 	a.in_sprint = not touch.aim
 	if touch.take("jump"):
 		a.in_jump = true
+	if touch.take("crouch"):
+		a.in_crouch = true
 	a.in_dive = a.state == Actor.State.SKYDIVE and pitch < -0.75
 	for bk in [["b_wall", "wall"], ["b_floor", "floor"], ["b_stairs", "stairs"], ["b_cone", "cone"]]:
 		if touch.take(bk[0]):
@@ -216,7 +221,8 @@ func _process(delta: float) -> void:
 	cam.fov = lerpf(75.0, 22.0 if scoped else 48.0, zoom)
 	var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch)
 	var back := 4.6
-	var up := 1.9
+	cam_up = lerpf(cam_up, 1.4 if (s.crouched or s.sliding) else 1.9, clampf(delta * 9.0, 0.0, 1.0))
+	var up := cam_up
 	var side := 0.75
 	if s.state == Actor.State.BLIMP:
 		back = 26.0; up = 9.0; side = 0.0

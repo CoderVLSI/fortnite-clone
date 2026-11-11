@@ -32,6 +32,7 @@ func buttons() -> Dictionary:
 		"reload": [Vector2(s.x - 120, s.y - 450), 44.0, "RELOAD"],
 		"use": [Vector2(s.x - 450, s.y - 300), 44.0, "USE"],
 		"drop": [Vector2(s.x - 440, s.y - 420), 36.0, "DROP"],
+		"crouch": [Vector2(s.x - 480, s.y - 165), 40.0, "CROUCH"],
 		"b_wall": [Vector2(s.x - 560, s.y - 560), 34.0, "WALL"],
 		"b_floor": [Vector2(s.x - 480, s.y - 560), 34.0, "FLOOR"],
 		"b_stairs": [Vector2(s.x - 400, s.y - 560), 34.0, "STAIR"],

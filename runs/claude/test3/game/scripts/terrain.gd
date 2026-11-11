@@ -167,6 +167,21 @@ func in_yard(p: Vector2, margin := 0.0) -> bool:
 	return absf(q.x) < 50.0 + margin and absf(q.y) < 37.0 + margin
 
 
+func water_surface(x: float, z: float) -> float:
+	## Height of the water surface here, or -1000 where there is none (sea, lake and river).
+	var h := height(x, z)
+	var best := -1000.0
+	if h < 0.0:
+		best = 0.0
+	var p := Vector2(x, z)
+	if p.distance_to(lake) < lake_r + 9.0:
+		best = maxf(best, LAKE_LEVEL)
+	var ri := river_info(p)
+	if ri.x < 11.5:
+		best = maxf(best, water_level(ri.y) + 0.02)
+	return best if best > h else -1000.0
+
+
 func is_water(x: float, z: float) -> bool:
 	var p := Vector2(x, z)
 	if p.distance_to(lake) < lake_r + 4.0:

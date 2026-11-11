@@ -124,6 +124,7 @@ func animate(delta: float, a: Actor) -> void:
 	var al := Vector3.ZERO; var ar := Vector3.ZERO; var el := 0.0; var er := 0.0
 	var lean := 0.0
 	var bob := 0.0
+	var hip_y := 0.95
 	if st == Actor.State.SKYDIVE:
 		lean = deg_to_rad(-78 if a.in_dive else -62)
 		al = Vector3(deg_to_rad(20), 0, deg_to_rad(-70)); ar = Vector3(deg_to_rad(20), 0, deg_to_rad(70))
@@ -131,6 +132,25 @@ func animate(delta: float, a: Actor) -> void:
 	elif st == Actor.State.GLIDE:
 		al = Vector3(deg_to_rad(165), 0, deg_to_rad(-12)); ar = Vector3(deg_to_rad(165), 0, deg_to_rad(12))
 		tl = deg_to_rad(12); tr = deg_to_rad(20); kl = deg_to_rad(25); kr = deg_to_rad(35)
+	elif a.mantle_t >= 0.0:                        # reaching up and pulling over the edge
+		al = Vector3(deg_to_rad(155), 0, deg_to_rad(-12)); ar = Vector3(deg_to_rad(155), 0, deg_to_rad(12)); el = -0.4; er = -0.4
+		tl = 1.0; tr = 0.25; kl = 1.5; kr = 0.5; lean = -0.25
+	elif st == Actor.State.SWIM:
+		if hv > 0.8:                                 # front crawl
+			phase += delta * 3.4
+			lean = -0.75
+			hip_y = 1.2
+			al = Vector3(1.6 + sin(phase) * 1.5, 0, -0.15); ar = Vector3(1.6 - sin(phase) * 1.5, 0, 0.15)
+			tl = sin(phase * 2.0) * 0.3; tr = -tl; kl = 0.25; kr = 0.25
+		else:                                        # treading water
+			phase += delta * 2.6
+			al = Vector3(0.5, 0, -1.1 + sin(phase) * 0.35); ar = Vector3(0.5, 0, 1.1 - sin(phase) * 0.35); el = -0.3; er = -0.3
+			tl = sin(phase) * 0.5; tr = -sin(phase) * 0.5; kl = maxf(0.0, cos(phase)) * 0.9; kr = maxf(0.0, -cos(phase)) * 0.9
+	elif a.sliding:                                  # one leg out in front, leaning back
+		hip_y = 0.5
+		lean = 0.3
+		tl = 1.35; kl = 0.1; tr = 0.4; kr = 1.75
+		al = Vector3(0.6, 0, -1.0); ar = Vector3(0.9, 0, 1.0)
 	else:
 		if not a.is_on_floor() and st == Actor.State.GROUND:
 			tl = deg_to_rad(35); tr = deg_to_rad(-15); kl = deg_to_rad(50); kr = deg_to_rad(25)
@@ -148,6 +168,11 @@ func animate(delta: float, a: Actor) -> void:
 			phase += delta * 1.6
 			al = Vector3(0, 0, -0.07); ar = Vector3(0, 0, 0.07)
 			bob = sin(phase) * 0.008
+		if a.crouched:                               # knees bent, steps shortened
+			tl = 1.05 + tl * 0.4; tr = 1.05 + tr * 0.4
+			kl = 1.7 + kl * 0.3; kr = 1.7 + kr * 0.3
+			hip_y = 0.62
+			lean -= 0.12
 		if a.using > 0.0:
 			al = Vector3(deg_to_rad(95), 0, deg_to_rad(20)); ar = Vector3(deg_to_rad(95), 0, deg_to_rad(-20)); el = deg_to_rad(-70); er = deg_to_rad(-70)
 		elif armed:                                   # both hands on the weapon
@@ -156,7 +181,7 @@ func animate(delta: float, a: Actor) -> void:
 			al = Vector3(deg_to_rad(80) + p, 0, deg_to_rad(32)); el = deg_to_rad(-40)
 		elif held_id == "pickaxe":
 			ar = Vector3(deg_to_rad(60) + sin(swing * PI) * 1.6, 0, 0); er = deg_to_rad(-60)
-	hips.position.y = 0.95 + bob
+	hips.position.y = lerpf(hips.position.y, hip_y + bob, clampf(delta * 14.0, 0.0, 1.0))
 	rotation.x = lerp_angle(rotation.x, lean, clampf(delta * 8.0, 0.0, 1.0))
 	torso.rotation.x = clampf(a.aim_pitch * 0.45, -0.5, 0.5) if (armed and st == Actor.State.GROUND) else 0.0
 	head.rotation.x = clampf(a.aim_pitch * 0.4, -0.5, 0.5)

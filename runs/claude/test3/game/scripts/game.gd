@@ -43,6 +43,7 @@ var shot_times := [5.0, 22.0, 45.0, 70.0, 100.0, 125.0, 160.0]
 var shot_i := 0
 var structures: Structures
 var buildtest := false
+var movetest := false
 
 
 func _ready() -> void:
@@ -51,6 +52,7 @@ func _ready() -> void:
 		if a == "--demo": demo = true
 		if a == "--autotest": autotest = true; demo = true
 		if a == "--buildtest": buildtest = true
+		if a == "--movetest": movetest = true
 		if a.begins_with("--seed="): seed_v = int(a.get_slice("=", 1))
 		if a.begins_with("--shots="):
 			shots_dir = a.get_slice("=", 1)
@@ -85,6 +87,10 @@ func _ready() -> void:
 		if sun:
 			sun.shadow_enabled = false
 		get_viewport().msaa_3d = Viewport.MSAA_DISABLED
+	if movetest:
+		var mt := preload("res://scripts/movetest.gd").new()
+		add_child(mt)
+		mt.setup(self)
 	if buildtest:
 		var t := preload("res://scripts/selftest.gd").new()
 		add_child(t)
@@ -601,6 +607,45 @@ func explode(pos: Vector3, pr: Dictionary) -> void:
 			on_damage_dealt(pr.owner, a, dmg, a.eye())
 	structures.explode(pos, pr.radius, pr.damage * Structures.EXPLOSION_MULT, pr.owner)
 	fx_blast(pos, pr.radius)
+
+
+func fx_splash(at: Vector3, size: float) -> void:
+	stats["splashes"] = stats.get("splashes", 0) + 1
+	if autotest:
+		return
+	_fx_disc(at + Vector3(0, 0.04, 0), 0.6, 2.6 * size, 0.55, Color(0.92, 0.97, 1.0, 0.8))
+	structures.burst(at + Vector3(0, 0.3, 0), Color(0.82, 0.92, 1.0), int(12 * size), 2.5 * size, 6.0 * size, 0.45)
+
+
+func fx_foam(at: Vector3) -> void:
+	stats["foam"] = stats.get("foam", 0) + 1
+	if autotest:
+		return
+	_fx_disc(at, 0.3, 1.0, 1.3, Color(1, 1, 1, 0.55))
+
+
+func _fx_disc(at: Vector3, r0: float, r1: float, life: float, col: Color) -> void:
+	var mi := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 1.0
+	cyl.bottom_radius = 1.0
+	cyl.height = 0.03
+	cyl.radial_segments = 20
+	mi.mesh = cyl
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = col
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	fx_root.add_child(mi)
+	mi.global_position = at
+	mi.scale = Vector3(r0, 1, r0)
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(mi, "scale", Vector3(r1, 1, r1), life)
+	tw.tween_property(mat, "albedo_color:a", 0.0, life)
+	tw.chain().tween_callback(mi.queue_free)
 
 
 func fx_blast(pos: Vector3, radius: float) -> void:

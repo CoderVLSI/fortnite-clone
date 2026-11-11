@@ -253,6 +253,9 @@ func _draw_status(sz: Vector2, s: Actor) -> void:
 	txt(Vector2(x + 8, y + 51), "HEALTH", 13, Color(0.92, 1.0, 0.92))
 	txt(Vector2(x, y + 51), str(int(ceil(s.hp))), 20, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT, w - 8)
 	txt(Vector2(x, y - 14), s.display_name, 16, Color(0.9, 0.92, 0.95))
+	var mv := "SWIMMING" if s.state == Actor.State.SWIM else ("SLIDING" if s.sliding else ("CROUCHED" if s.crouched else ""))
+	if mv != "":
+		txt(Vector2(x, y - 14), mv, 14, Color(0.6, 0.85, 1.0), HORIZONTAL_ALIGNMENT_RIGHT, w)
 
 
 func _draw_hotbar(sz: Vector2, s: Actor) -> void:

@@ -28,6 +28,7 @@ reload={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":82)]
 map={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":77)]}
 pickaxe={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":70)]}
 drop_item={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":71)]}
+crouch={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":4194326)]}
 build_wall={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":81)]}
 build_floor={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":90)]}
 build_stairs={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":67)]}
