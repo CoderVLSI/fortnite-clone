@@ -12,7 +12,8 @@ var arcs: Array = []                      # incoming damage directions {from, bo
 var notes: Array = []                     # pickup notes {text, color, born}
 var hit_time := -9.0
 var kill_time := -9.0
-var mat_notes: Array = []                 # +N popups next to the material counters {mat, n, crit, born}
+var mat_notes: Array = []
+var icons := {}                           # name -> Texture2D (null when missing)                 # +N popups next to the material counters {mat, n, crit, born}
 
 
 func setup(g: Node) -> void:
@@ -57,13 +58,37 @@ func add_pickup_note(it: Dictionary) -> void:
 	else:
 		t = "+ " + Items.label(it)
 		c = Items.RARITY_COLORS[it.rarity]
-	notes.append({"text": t, "color": c, "born": game.match_time})
+	notes.append({"text": t, "color": c, "born": game.match_time, "icon": item_icon(it)})
 	if notes.size() > 5:
 		notes.pop_front()
 
 
 func _process(_d: float) -> void:
 	queue_redraw()
+
+
+func icon(name: String) -> Texture2D:
+	if not icons.has(name):
+		var p := "res://textures/icons/%s.png" % name
+		icons[name] = load(p) if ResourceLoader.exists(p) else null
+	return icons[name]
+
+
+func draw_icon(name: String, r: Rect2, mod := Color.WHITE) -> bool:
+	## Draws the icon into the rectangle; false when there is no icon for it.
+	var t := icon(name)
+	if t == null:
+		return false
+	draw_texture_rect(t, r, false, mod)
+	return true
+
+
+func item_icon(it: Dictionary) -> String:
+	if it.has("ammo"):
+		return "ammo_" + it.ammo
+	if it.has("mat"):
+		return "mat_" + it.mat
+	return it.id
 
 
 func txt(pos: Vector2, s: String, size := 18, col := Color.WHITE, align := HORIZONTAL_ALIGNMENT_LEFT, width := -1.0) -> void:
@@ -211,10 +236,19 @@ func _draw_minimap(sz: Vector2, s: Actor) -> void:
 	var t: float = st.time_left() if st.active else maxf(20.0 - game.match_time, 0.0)
 	if st.done:
 		label = "Final circle"; t = 0.0
-	txt(Vector2(origin.x + 8, y + 24), "%s  %d:%02d" % [label, int(t) / 60, int(t) % 60], 16, Color(0.85, 0.7, 1.0) if st.shrinking else Color.WHITE)
+	var sx := origin.x + 8
+	if draw_icon("storm", Rect2(origin.x + 4, y + 4, 28, 28)):
+		sx += 30
+	txt(Vector2(sx, y + 24), "%s  %d:%02d" % [label, int(t) / 60, int(t) % 60], 16, Color(0.85, 0.7, 1.0) if st.shrinking else Color.WHITE)
 	panel(Rect2(origin.x - 3, y + 40, extent + 6, 36))
-	txt(Vector2(origin.x + 8, y + 64), "Alive  %d" % game.alive_count(), 18)
-	txt(Vector2(origin.x + 120, y + 64), "Elims  %d" % game.player.kills, 18)
+	if draw_icon("alive", Rect2(origin.x + 4, y + 44, 28, 28)):
+		txt(Vector2(origin.x + 36, y + 64), "%d" % game.alive_count(), 20)
+	else:
+		txt(Vector2(origin.x + 8, y + 64), "Alive  %d" % game.alive_count(), 18)
+	if draw_icon("elims", Rect2(origin.x + 118, y + 44, 28, 28)):
+		txt(Vector2(origin.x + 150, y + 64), "%d" % game.player.kills, 20)
+	else:
+		txt(Vector2(origin.x + 120, y + 64), "Elims  %d" % game.player.kills, 18)
 
 
 func _draw_full_map(sz: Vector2, s: Actor) -> void:
@@ -244,17 +278,20 @@ func _draw_feed(_sz: Vector2, now: float) -> void:
 
 
 func _draw_status(sz: Vector2, s: Actor) -> void:
-	var x := 26.0
+	var x := 60.0
 	var y := sz.y - 96.0
 	var w := 340.0
 	# shield above health
 	panel(Rect2(x - 4, y - 4, w + 8, 66))
 	draw_rect(Rect2(x, y, w, 22), Color(0.1, 0.14, 0.22, 0.9))
 	draw_rect(Rect2(x, y, w * clampf(s.shield / 100.0, 0, 1), 22), Color(0.25, 0.6, 1.0))
+	if draw_icon("shield", Rect2(x - 34, y - 3, 28, 28)):
+		pass
 	txt(Vector2(x + 8, y + 17), "SHIELD", 13, Color(0.9, 0.95, 1.0))
 	txt(Vector2(x, y + 17), str(int(ceil(s.shield))), 16, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT, w - 8)
 	draw_rect(Rect2(x, y + 30, w, 28), Color(0.12, 0.18, 0.12, 0.9))
 	draw_rect(Rect2(x, y + 30, w * clampf(s.hp / 100.0, 0, 1), 28), Color(0.3, 0.82, 0.3) if s.hp > 30.0 else Color(0.9, 0.3, 0.2))
+	draw_icon("health", Rect2(x - 34, y + 30, 28, 28))
 	txt(Vector2(x + 8, y + 51), "HEALTH", 13, Color(0.92, 1.0, 0.92))
 	txt(Vector2(x, y + 51), str(int(ceil(s.hp))), 20, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT, w - 8)
 	txt(Vector2(x, y - 14), s.display_name, 16, Color(0.9, 0.92, 0.95))
@@ -284,13 +321,16 @@ func _draw_hotbar(sz: Vector2, s: Actor) -> void:
 		var act: bool = s.active == slot
 		draw_rect(r, Color(1, 1, 1, 0.95) if act else Color(1, 1, 1, 0.25), false, 3.0 if act else 1.5)
 		txt(r.position + Vector2(5, 15), "F" if slot < 0 else str(slot + 1), 12, Color(1, 1, 1, 0.8))
+		var ir := Rect2(r.position + Vector2(9, 9), Vector2(box - 18, box - 18))
 		if slot < 0:
-			txt(r.position + Vector2(0, 46), "Pickaxe", 13, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, box)
+			if not draw_icon("pickaxe", ir):
+				txt(r.position + Vector2(0, 46), "Pickaxe", 13, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, box)
 		elif it != null:
 			var d: Dictionary = Items.def(it)
-			var words: PackedStringArray = d.name.split(" ")
-			for wi in words.size():
-				txt(r.position + Vector2(0, 36 + wi * 15), words[wi], 13, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, box)
+			if not draw_icon(it.id, ir):
+				var words: PackedStringArray = d.name.split(" ")
+				for wi in words.size():
+					txt(r.position + Vector2(0, 36 + wi * 15), words[wi], 13, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, box)
 			if d.kind == "weapon":
 				txt(r.position + Vector2(0, box - 7), "%d" % it.loaded, 14, Color(1, 1, 1, 0.95), HORIZONTAL_ALIGNMENT_RIGHT, box - 6)
 			else:
@@ -306,8 +346,9 @@ func _draw_hotbar(sz: Vector2, s: Actor) -> void:
 		txt(Vector2(sz.x - 260, y0 - 30), d2.ammo + " ammo", 13, Items.AMMO_COLORS[d2.ammo], HORIZONTAL_ALIGNMENT_RIGHT, 232)
 	var ax := x0
 	for t in Items.AMMO_TYPES:
-		draw_rect(Rect2(ax, y0 - 24, 10, 10), Items.AMMO_COLORS[t])
-		txt(Vector2(ax + 14, y0 - 14), "%d" % s.ammo[t], 13, Color(0.9, 0.92, 0.95))
+		if not draw_icon("ammo_" + t, Rect2(ax - 4, y0 - 31, 20, 20)):
+			draw_rect(Rect2(ax, y0 - 24, 10, 10), Items.AMMO_COLORS[t])
+		txt(Vector2(ax + 17, y0 - 14), "%d" % s.ammo[t], 13, Color(0.9, 0.92, 0.95))
 		ax += 52
 
 
@@ -318,8 +359,9 @@ func _draw_mats(o: Vector2, s: Actor) -> void:
 		var m: String = Structures.MATS[i]
 		var y := o.y + i * 29
 		var col: Color = Items.MAT_COLORS[m]
-		draw_rect(Rect2(o.x, y + 4, 18, 18), col)
-		draw_rect(Rect2(o.x, y + 4, 18, 18), Color(0, 0, 0, 0.6), false, 1.5)
+		if not draw_icon("mat_" + m, Rect2(o.x - 3, y + 1, 24, 24)):
+			draw_rect(Rect2(o.x, y + 4, 18, 18), col)
+			draw_rect(Rect2(o.x, y + 4, 18, 18), Color(0, 0, 0, 0.6), false, 1.5)
 		var low: bool = s.build_piece != "" and m == s.build_mat and int(s.mats[m]) < Structures.COST
 		txt(Vector2(o.x + 26, y + 21), "%d" % int(s.mats[m]), 19, Color(1.0, 0.45, 0.35) if low else Color.WHITE)
 		if s.build_piece != "" and m == s.build_mat:
@@ -346,7 +388,10 @@ func _draw_build_bar(x0: float, y0: float, box: float, gap: float, s: Actor) -> 
 		draw_rect(r, Color(0.15, 0.35, 0.6, 0.85) if act else Color(0.08, 0.1, 0.14, 0.7))
 		draw_rect(r, Color(1, 1, 1, 0.95) if act else Color(1, 1, 1, 0.25), false, 3.0 if act else 1.5)
 		txt(r.position + Vector2(5, 15), keys[p], 12, Color(1, 1, 1, 0.8))
-		txt(r.position + Vector2(0, 47), Structures.PIECE_NAMES[p], 14, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, box)
+		if draw_icon("build_" + p, Rect2(r.position + Vector2(13, 10), Vector2(box - 26, box - 26))):
+			txt(r.position + Vector2(0, box - 5), Structures.PIECE_NAMES[p], 11, Color(1, 1, 1, 0.9), HORIZONTAL_ALIGNMENT_CENTER, box)
+		else:
+			txt(r.position + Vector2(0, 47), Structures.PIECE_NAMES[p], 14, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, box)
 	var r2 := Rect2(x0 + 4 * (box + gap), y0, box * 2 + gap, box)
 	var mc: Color = Items.MAT_COLORS[s.build_mat]
 	draw_rect(r2, Color(mc.r * 0.45, mc.g * 0.45, mc.b * 0.45, 0.85))
@@ -428,7 +473,11 @@ func _draw_notes(sz: Vector2, now: float) -> void:
 		if age > 3.0:
 			notes.erase(n)
 			continue
-		txt(Vector2(30, y), n.text, 16, Color(n.color.r, n.color.g, n.color.b, clampf(3.0 - age, 0, 1)))
+		var al := clampf(3.0 - age, 0, 1)
+		var tx := 30.0
+		if draw_icon(n.get("icon", ""), Rect2(26, y - 20, 26, 26), Color(1, 1, 1, al)):
+			tx = 58.0
+		txt(Vector2(tx, y), n.text, 16, Color(n.color.r, n.color.g, n.color.b, al))
 		y -= 22
 
 
