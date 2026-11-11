@@ -38,6 +38,7 @@ func buttons() -> Dictionary:
 		"b_stairs": [Vector2(s.x - 400, s.y - 560), 34.0, "STAIR"],
 		"b_cone": [Vector2(s.x - 320, s.y - 560), 34.0, "CONE"],
 		"mat": [Vector2(s.x - 240, s.y - 560), 34.0, "MAT"],
+		"edit": [Vector2(s.x - 160, s.y - 560), 34.0, "EDIT"],
 	}
 
 
@@ -71,6 +72,7 @@ func _input(e: InputEvent) -> void:
 					button_ids[e.index] = name
 					if name == "fire":
 						fire = true
+						pressed_once["fire_down"] = true
 						look_ids[e.index] = true           # the firing thumb can still steer the aim
 					elif name == "aim":
 						aim = not aim

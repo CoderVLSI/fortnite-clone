@@ -98,6 +98,11 @@ func _draw() -> void:
 	_draw_hotbar(sz, s)
 	_draw_centre(sz, s, ctl, now)
 	_draw_notes(sz, now)
+	if game.structures.edit_entry != null:
+		var hint := "EDITING   click or drag tiles   ·   G confirm   ·   R reset" if ctl.touch == null else "EDITING   tap tiles with FIRE   ·   EDIT confirm   ·   RELOAD reset"
+		var w := font.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 18).x + 40
+		panel(Rect2(sz.x / 2 - w / 2, sz.y - 168, w, 36), Color(0.1, 0.25, 0.45, 0.8))
+		txt(Vector2(0, sz.y - 143), hint, 18, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, sz.x)
 	if p.alive():
 		_draw_target_health(sz, ctl, p)
 	if ctl.show_map:

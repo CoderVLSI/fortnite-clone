@@ -59,6 +59,12 @@ var weak: MeshInstance3D          # the player's weak point
 var weak_entry = null
 var weak_time := -99.0
 var mat_cache := {}
+# piece editing (the player's)
+var edit_entry = null
+var edit_sel := {}
+var edit_paint := true
+var edit_overlay: Array = []
+var edit_hover := -1
 var shape_cache := {}
 
 
@@ -496,6 +502,8 @@ func _spawn_piece(t: Dictionary, mat: String, owner_a: Actor) -> Dictionary:
 	e["level"] = t.level
 	e["datum"] = t.datum
 	e["features"] = t.features
+	e["dir"] = t.dir
+	e["edit"] = []
 	e["owner"] = owner_a
 	e["born"] = game.match_time
 	e["grounded"] = _grounded(t, root)
@@ -638,6 +646,272 @@ func burst(at: Vector3, col: Color, n: int, up_min := 3.0, up_max := 8.0, size :
 		mi.global_position = at + Vector3(game.rng.randf_range(-0.8, 0.8), game.rng.randf_range(-0.6, 0.8), game.rng.randf_range(-0.8, 0.8))
 		var v := Vector3(game.rng.randf_range(-4, 4), game.rng.randf_range(up_min, up_max), game.rng.randf_range(-4, 4))
 		debris.append({"node": mi, "vel": v, "life": game.rng.randf_range(0.8, 1.4)})
+
+
+# ----------------------------------------------------------------------------- editing
+
+func tile_count(e: Dictionary) -> int:
+	return 9 if e.piece == "wall" else 4
+
+
+func begin_edit(a: Actor, e) -> bool:
+	## Open the edit grid on one of your own pieces.
+	if e == null or e.dead or e.kind != "build" or e.get("owner") != a:
+		return false
+	if (e.pos as Vector3).distance_to(a.global_position) > 8.0:
+		return false
+	cancel_edit()
+	edit_entry = e
+	edit_sel = {}
+	for t in e.edit:
+		edit_sel[t] = true
+	_build_overlay(e, a)
+	return true
+
+
+func cancel_edit() -> void:
+	for n in edit_overlay:
+		if is_instance_valid(n):
+			n.queue_free()
+	edit_overlay = []
+	edit_entry = null
+	edit_hover = -1
+
+
+func confirm_edit() -> void:
+	if edit_entry != null and not edit_entry.dead:
+		apply_edit(edit_entry, edit_sel.keys())
+	cancel_edit()
+
+
+func reset_edit() -> void:
+	## Put the piece back the way it was built.
+	var e = edit_entry
+	cancel_edit()
+	if e != null and not e.dead:
+		e.edit = []
+		_rebuild(e)
+
+
+func update_edit(a: Actor, from: Vector3, dir: Vector3, held: bool, just: bool) -> void:
+	var e = edit_entry
+	if e == null:
+		return
+	if e.dead or (e.pos as Vector3).distance_to(a.global_position) > 9.0 or not a.alive():
+		cancel_edit()
+		return
+	edit_hover = edit_tile_at(e, from, dir)
+	if just and edit_hover >= 0:
+		edit_paint = not edit_sel.has(edit_hover)       # first tile decides: select or deselect
+	if held and edit_hover >= 0:
+		if edit_paint:
+			edit_sel[edit_hover] = true
+		else:
+			edit_sel.erase(edit_hover)
+	for i in edit_overlay.size():
+		var mi: MeshInstance3D = edit_overlay[i]
+		var on := edit_sel.has(i)
+		var c := Color(0.25, 0.6, 1.0, 0.55) if on else Color(1, 1, 1, 0.2)
+		if i == edit_hover:
+			c = Color(0.55, 0.85, 1.0, 0.75) if on else Color(1, 1, 1, 0.45)
+		(mi.material_override as StandardMaterial3D).albedo_color = c
+
+
+func edit_tile_at(e: Dictionary, from: Vector3, dir: Vector3) -> int:
+	## Which tile of the piece's edit grid the ray points at, or -1.
+	var inv := (e.root as Node3D).global_transform.affine_inverse()
+	var o := inv * from
+	var d := (inv.basis * dir).normalized()
+	var p := Vector3.ZERO
+	match e.piece:
+		"wall":
+			if absf(d.z) < 1e-4:
+				return -1
+			var t := -o.z / d.z
+			if t < 0.0:
+				return -1
+			p = o + d * t
+			var col := int(floor((p.x + 2.0) / (4.0 / 3.0)))
+			var row := int(floor(p.y / (4.0 / 3.0)))
+			if col < 0 or col > 2 or row < 0 or row > 2:
+				return -1
+			return row * 3 + col
+		"stairs":
+			var den := d.y + d.z
+			if absf(den) < 1e-4:
+				return -1
+			var t2 := (2.0 - o.y - o.z) / den
+			if t2 < 0.0:
+				return -1
+			p = o + d * t2
+		_:
+			var plane_y := 0.125 if e.piece == "floor" else 1.0
+			if absf(d.y) < 1e-4:
+				return -1
+			var t3 := (plane_y - o.y) / d.y
+			if t3 < 0.0:
+				return -1
+			p = o + d * t3
+	if absf(p.x) > 2.0 or absf(p.z) > 2.0:
+		return -1
+	return (0 if p.z < 0.0 else 2) + (0 if p.x < 0.0 else 1)
+
+
+func _build_overlay(e: Dictionary, a: Actor) -> void:
+	var root: Node3D = e.root
+	var side := 1.0
+	if e.piece == "wall":
+		var cam_local := root.global_transform.affine_inverse() * a.eye()
+		side = 1.0 if cam_local.z >= 0.0 else -1.0
+	for i in tile_count(e):
+		var mi := MeshInstance3D.new()
+		var q := QuadMesh.new()
+		var m := StandardMaterial3D.new()
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		m.no_depth_test = true
+		mi.material_override = m
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		match e.piece:
+			"wall":
+				q.size = Vector2(1.22, 1.22)
+				mi.position = Vector3(-2.0 + (i % 3 + 0.5) * 4.0 / 3.0, (i / 3 + 0.5) * 4.0 / 3.0, 0.16 * side)
+			"stairs":
+				q.size = Vector2(1.85, 1.85 * sqrt(2.0))
+				var z := -1.0 if i < 2 else 1.0
+				mi.position = Vector3(-1.0 if i % 2 == 0 else 1.0, 2.0 - z + 0.2, z)
+				mi.rotation.x = -PI / 4
+			_:
+				q.size = Vector2(1.85, 1.85)
+				mi.position = Vector3(-1.0 if i % 2 == 0 else 1.0, 0.32 if e.piece == "floor" else 1.15, -1.0 if i < 2 else 1.0)
+				mi.rotation.x = -PI / 2
+		mi.mesh = q
+		root.add_child(mi)
+		edit_overlay.append(mi)
+
+
+func apply_edit(e: Dictionary, tiles: Array) -> bool:
+	## Cut the selected tiles out (walls, floors, cones) or turn a ramp towards the selected side.
+	var sel := tiles.duplicate()
+	sel.sort()
+	match e.piece:
+		"stairs":
+			var sides := {"0,1": 0, "1,3": 1, "2,3": 2, "0,2": 3}
+			var k := ",".join(sel.map(func(x): return str(x)))
+			if not sides.has(k):
+				return false
+			e.dir = (int(e.dir) + int(sides[k])) % 4
+			e.edit = []
+		_:
+			if sel.size() >= tile_count(e):
+				return false                            # at least one tile has to stay
+			e.edit = sel
+	_rebuild(e)
+	return true
+
+
+func _rebuild(e: Dictionary) -> void:
+	var root: Node3D = e.root
+	var body: StaticBody3D = e.body
+	for c in body.get_children():
+		body.remove_child(c)
+		c.free()
+	for c in root.get_children():
+		if c is MeshInstance3D and not edit_overlay.has(c):
+			root.remove_child(c)
+			c.free()
+	var mat: String = e.mat
+	if e.piece == "stairs":
+		root.global_transform = Transform3D(Basis(Vector3.UP, -int(e.dir) * PI / 2), root.global_position)
+	if (e.edit as Array).is_empty():
+		var mi := MeshInstance3D.new()
+		mi.mesh = _kit_mesh(e.piece, mat)
+		root.add_child(mi)
+		var sh: Array = _shape(e.piece)
+		var cs := CollisionShape3D.new()
+		cs.shape = sh[0]
+		cs.transform = sh[1]
+		body.add_child(cs)
+		e.node = mi
+		return
+	e.node = root
+	match e.piece:
+		"wall":
+			var tb := BoxShape3D.new()
+			tb.size = Vector3(4.0 / 3.0, 4.0 / 3.0, 0.25)
+			for i in 9:
+				if e.edit.has(i):
+					continue
+				var cx := -2.0 + (i % 3 + 0.5) * 4.0 / 3.0
+				var by := (i / 3) * 4.0 / 3.0
+				var mi2 := MeshInstance3D.new()
+				mi2.mesh = _kit_mesh("wall", mat)
+				mi2.transform = Transform3D(Basis.IDENTITY.scaled(Vector3(1.0 / 3.0, 1.0 / 3.0, 1.0)), Vector3(cx, by, 0))
+				root.add_child(mi2)
+				var cs2 := CollisionShape3D.new()
+				cs2.shape = tb
+				cs2.position = Vector3(cx, by + 2.0 / 3.0, 0)
+				body.add_child(cs2)
+		"floor":
+			var fb := BoxShape3D.new()
+			fb.size = Vector3(2.0, 0.25, 2.0)
+			for i in 4:
+				if e.edit.has(i):
+					continue
+				var c3 := Vector3(-1.0 if i % 2 == 0 else 1.0, 0, -1.0 if i < 2 else 1.0)
+				var mi3 := MeshInstance3D.new()
+				mi3.mesh = _kit_mesh("floor", mat)
+				mi3.transform = Transform3D(Basis.IDENTITY.scaled(Vector3(0.5, 1.0, 0.5)), c3)
+				root.add_child(mi3)
+				var cs3 := CollisionShape3D.new()
+				cs3.shape = fb
+				cs3.position = c3 + Vector3(0, 0.125, 0)
+				body.add_child(cs3)
+		"cone":
+			_rebuild_cone(e, root, body)
+
+
+func _rebuild_cone(e: Dictionary, root: Node3D, body: StaticBody3D) -> void:
+	## A pyramid made of four corner quarters; the cut quarters leave an opening.
+	var A := [Vector3(-2, 0, -2), Vector3(2, 0, -2), Vector3(-2, 0, 2), Vector3(2, 0, 2)]
+	var P := Vector3(0, 2, 0)
+	var mids := {"0,1": Vector3(0, 0, -2), "1,3": Vector3(2, 0, 0), "2,3": Vector3(0, 0, 2), "0,2": Vector3(-2, 0, 0)}
+	var tri := {0: [], 1: [], 2: [], 3: []}
+	for k in mids:
+		var ab: PackedStringArray = k.split(",")
+		var i0 := int(ab[0]); var i1 := int(ab[1])
+		tri[i0].append([A[i0], mids[k], P])
+		tri[i1].append([mids[k], A[i1], P])
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var col: Color = Items.MAT_COLORS[e.mat]
+	for i in 4:
+		if e.edit.has(i):
+			continue
+		var pts := PackedVector3Array([A[i], P, Vector3.ZERO])
+		for t in tri[i]:
+			var n: Vector3 = ((t[1] - t[0]) as Vector3).cross(t[2] - t[0]).normalized()
+			if n.y < 0.0:
+				n = -n
+			for v in t:
+				st.set_normal(n)
+				st.set_color(col)
+				st.add_vertex(v)
+			pts.append(t[0]); pts.append(t[1])
+		var cv := ConvexPolygonShape3D.new()
+		cv.points = pts
+		var cs := CollisionShape3D.new()
+		cs.shape = cv
+		body.add_child(cs)
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.roughness = 0.8
+	mi.material_override = m
+	root.add_child(mi)
 
 
 func looked_at(from: Vector3, dir: Vector3, reach: float, exclude: Actor) -> Variant:

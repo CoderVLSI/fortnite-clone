@@ -182,6 +182,115 @@ func _ready() -> void:
 	var hit_res: Dictionary = game.ray(a.eye(), a.eye() + Vector3(0, 0, -6), a, 1)
 	S.damage_at(hit_res.collider, hit_res.get("shape", 0), 30.0, a, hit_res.position)
 	check("bullet damage applies to a built wall", absf(w_hp - target_wall.hp - 30.0) < 0.1)
+	# --- editing: windows, doors, half walls, floor holes, turned ramps, cone openings, reset
+	var espot := Vector3(game.terrain.village.x - 20.0, 0, game.terrain.village.y + 14.0)
+	espot.y = game.terrain.height(espot.x, espot.z) + 0.3
+	a.state = Actor.State.GROUND
+	a.global_position = espot
+	a.velocity = Vector3.ZERO
+	await frames(10)
+	a.mats = {"wood": 200, "brick": 100, "metal": 60}
+	a.build_mat = "wood"
+	a.aim_yaw = 0.0
+	a.aim_pitch = 0.0
+	a.build_piece = "wall"
+	S.place(a)
+	var ew = S.pieces.values()[S.pieces.size() - 1]
+	a.build_piece = ""
+	await frames(3)
+	var wxf: Transform3D = (ew.root as Node3D).global_transform
+	var eye := a.eye()
+	var tile_c := func(i: int) -> Vector3: return wxf * Vector3(-2.0 + (i % 3 + 0.5) * 4.0 / 3.0, (i / 3 + 0.5) * 4.0 / 3.0, 0)
+	check("edit grid opens on your own wall", S.begin_edit(a, ew))
+	check("aiming picks the middle tile", S.edit_tile_at(ew, eye, (tile_c.call(4) - eye).normalized()) == 4)
+	S.update_edit(a, eye, (tile_c.call(4) - eye).normalized(), true, true)
+	await snap("edit_01_grid", a.aim_yaw + 0.35, -0.15)
+	S.confirm_edit()
+	await frames(2)
+	var through := func(i: int) -> bool:
+		var c: Vector3 = tile_c.call(i)
+		var n: Vector3 = wxf.basis.z
+		var r: Dictionary = game.ray(c + n * 1.0, c - n * 1.0, null, 1)
+		return r.is_empty() or S.lookup(r.collider, r.get("shape", 0)) != ew
+	check("window: the middle tile is open", through.call(4) and not through.call(0) and not through.call(8))
+	check("window wall keeps 8 tiles", (ew.body as Node).get_child_count() == 8)
+	S.begin_edit(a, ew)
+	S.edit_sel = {1: true, 4: true}
+	S.confirm_edit()
+	await frames(2)
+	check("door: bottom and middle of the centre column open", through.call(1) and through.call(4) and not through.call(7))
+	S.begin_edit(a, ew)
+	S.edit_sel = {6: true, 7: true, 8: true}
+	S.confirm_edit()
+	await frames(2)
+	check("half wall: the top row is open", through.call(6) and through.call(7) and through.call(8) and not through.call(1))
+	S.begin_edit(a, ew)
+	S.edit_sel = {}
+	for i in 9:
+		S.edit_sel[i] = true
+	S.confirm_edit()
+	check("a wall cannot be cut away completely", (ew.edit as Array).size() == 3)
+	S.begin_edit(a, ew)
+	S.reset_edit()
+	await frames(2)
+	check("reset restores the whole wall", (ew.edit as Array).is_empty() and (ew.body as Node).get_child_count() == 1 and not through.call(4))
+	check("someone else's piece cannot be edited", not S.begin_edit(game.actors[1], ew))
+	# floor with a hole
+	a.build_piece = "floor"
+	a.aim_pitch = 0.0
+	S.place(a)
+	var ef = S.pieces.values()[S.pieces.size() - 1]
+	a.build_piece = ""
+	S.begin_edit(a, ef)
+	S.edit_sel = {0: true}
+	S.confirm_edit()
+	await frames(2)
+	var fxf: Transform3D = (ef.root as Node3D).global_transform
+	var down0: Dictionary = game.ray(fxf * Vector3(-1, 2, -1), fxf * Vector3(-1, -1, -1), null, 1)
+	var down3: Dictionary = game.ray(fxf * Vector3(1, 2, 1), fxf * Vector3(1, -1, 1), null, 1)
+	check("floor: the cut tile is a hole", (down0.is_empty() or S.lookup(down0.collider, 0) != ef) and not down3.is_empty() and S.lookup(down3.collider, down3.get("shape", 0)) == ef)
+	# turned ramp
+	a.build_piece = "stairs"
+	a.aim_yaw = PI / 2
+	S.place(a)
+	var es = S.pieces.values()[S.pieces.size() - 1]
+	a.build_piece = ""
+	var d0: int = es.dir
+	S.begin_edit(a, es)
+	S.edit_sel = {1: true, 3: true}
+	S.confirm_edit()
+	check("ramp turns towards the selected side", es.dir == (d0 + 1) % 4, "dir %d -> %d" % [d0, es.dir])
+	S.begin_edit(a, es)
+	S.edit_sel = {0: true, 3: true}
+	check("a diagonal selection does not turn the ramp", not S.apply_edit(es, [0, 3]) and es.dir == (d0 + 1) % 4)
+	S.cancel_edit()
+	# cone with an opening
+	a.build_piece = "cone"
+	a.aim_yaw = PI
+	S.place(a)
+	var ec = S.pieces.values()[S.pieces.size() - 1]
+	a.build_piece = ""
+	S.begin_edit(a, ec)
+	S.edit_sel = {0: true}
+	S.confirm_edit()
+	await frames(2)
+	var cxf: Transform3D = (ec.root as Node3D).global_transform
+	var c0: Dictionary = game.ray(cxf * Vector3(-1.4, 3, -1.4), cxf * Vector3(-1.4, -0.5, -1.4), null, 1)
+	var c3: Dictionary = game.ray(cxf * Vector3(1.4, 3, 1.4), cxf * Vector3(1.4, -0.5, 1.4), null, 1)
+	check("cone: the cut corner is open", (c0.is_empty() or S.lookup(c0.collider, 0) != ec) and not c3.is_empty() and S.lookup(c3.collider, c3.get("shape", 0)) == ec)
+	await snap("edit_02_pieces", PI * 0.85, -0.4)
+	# an edited wall still holds up what is built on it
+	a.build_piece = "floor"
+	a.aim_yaw = 0.0
+	a.aim_pitch = 0.8
+	S.place(a)
+	var roof = S.pieces.values()[S.pieces.size() - 1]
+	a.build_piece = ""
+	S.begin_edit(a, ew)
+	S.edit_sel = {4: true}
+	S.confirm_edit()
+	await frames(30)
+	check("an edited wall still supports a floor", not roof.dead and not roof.grounded)
 	# --- materials drop on elimination
 	a.mats = {"wood": 40, "brick": 0, "metal": 7}
 	var p_before: int = game.pickups.size()

@@ -97,8 +97,16 @@ func _physics_process(delta: float) -> void:
 		a.in_dive = a.state == Actor.State.SKYDIVE and (pitch < -0.75 or Input.is_action_pressed("sprint"))
 		for bk in [["build_wall", "wall"], ["build_floor", "floor"], ["build_stairs", "stairs"], ["build_cone", "cone"]]:
 			if Input.is_action_just_pressed(bk[0]):
+				game.structures.cancel_edit()
 				a.set_build(bk[1])
-		if a.build_piece != "":
+		if Input.is_action_just_pressed("edit"):
+			_edit_key()
+		if editing():
+			a.in_fire = false
+			_edit_tick(Input.is_action_pressed("fire"), Input.is_action_just_pressed("fire"))
+			if Input.is_action_just_pressed("reload"):
+				game.structures.reset_edit()
+		elif a.build_piece != "":
 			a.in_fire = false
 			if Input.is_action_just_pressed("aim"):
 				a.cycle_build_mat()
@@ -110,7 +118,7 @@ func _physics_process(delta: float) -> void:
 				a.in_fire = true
 			elif not Input.is_action_pressed("fire"):
 				a.in_fire = false
-		if Input.is_action_just_pressed("reload"):
+		if Input.is_action_just_pressed("reload") and not editing():
 			a.start_reload()
 		if Input.is_action_just_pressed("pickaxe"):
 			a.select(-1)
@@ -149,8 +157,16 @@ func _touch_input() -> void:
 	a.in_dive = a.state == Actor.State.SKYDIVE and pitch < -0.75
 	for bk in [["b_wall", "wall"], ["b_floor", "floor"], ["b_stairs", "stairs"], ["b_cone", "cone"]]:
 		if touch.take(bk[0]):
+			game.structures.cancel_edit()
 			a.set_build(bk[1])
-	if a.build_piece != "":
+	if touch.take("edit"):
+		_edit_key()
+	if editing():
+		a.in_fire = false
+		_edit_tick(touch.fire, touch.take("fire_down"))
+		if touch.take("reload"):
+			game.structures.reset_edit()
+	elif a.build_piece != "":
 		a.in_fire = false
 		if touch.take("mat"):
 			a.cycle_build_mat()
@@ -167,6 +183,26 @@ func _touch_input() -> void:
 	_interaction()
 	if not a.alive() and touch.fire:
 		touch.fire = false
+
+
+func editing() -> bool:
+	return game.structures.edit_entry != null
+
+
+func _edit_key() -> void:
+	## G opens the edit grid on the piece you are looking at; G again confirms the edit.
+	var S: Structures = game.structures
+	if S.edit_entry != null:
+		S.confirm_edit()
+		return
+	if look_entry != null and S.begin_edit(a, look_entry):
+		a.build_piece = ""
+		a.in_fire = false
+		a._refresh_held()
+
+
+func _edit_tick(held: bool, just: bool) -> void:
+	game.structures.update_edit(a, cam.global_position, -cam.global_transform.basis.z, held, just)
 
 
 func _build_tick(delta: float, held: bool, just: bool) -> void:
