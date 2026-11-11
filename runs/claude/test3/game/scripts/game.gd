@@ -44,6 +44,7 @@ var shot_i := 0
 var structures: Structures
 var buildtest := false
 var movetest := false
+var poses := false
 
 
 func _ready() -> void:
@@ -53,6 +54,7 @@ func _ready() -> void:
 		if a == "--autotest": autotest = true; demo = true
 		if a == "--buildtest": buildtest = true
 		if a == "--movetest": movetest = true
+		if a == "--poses": poses = true
 		if a.begins_with("--seed="): seed_v = int(a.get_slice("=", 1))
 		if a.begins_with("--shots="):
 			shots_dir = a.get_slice("=", 1)
@@ -87,6 +89,10 @@ func _ready() -> void:
 		if sun:
 			sun.shadow_enabled = false
 		get_viewport().msaa_3d = Viewport.MSAA_DISABLED
+	if poses:
+		var ps := preload("res://scripts/posesheet.gd").new()
+		add_child(ps)
+		ps.setup(self)
 	if movetest:
 		var mt := preload("res://scripts/movetest.gd").new()
 		add_child(mt)
