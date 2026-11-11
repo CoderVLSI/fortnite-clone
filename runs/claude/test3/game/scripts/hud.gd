@@ -12,6 +12,7 @@ var arcs: Array = []                      # incoming damage directions {from, bo
 var notes: Array = []                     # pickup notes {text, color, born}
 var hit_time := -9.0
 var kill_time := -9.0
+var mat_notes: Array = []                 # +N popups next to the material counters {mat, n, crit, born}
 
 
 func setup(g: Node) -> void:
@@ -30,6 +31,16 @@ func add_damage_number(at: Vector3, amount: float, shielded: bool, killed: bool)
 		kill_time = game.match_time
 
 
+func add_structure_number(at: Vector3, amount: float) -> void:
+	numbers.append({"pos": at, "text": str(int(round(amount))), "color": Color(0.82, 0.84, 0.86), "born": game.match_time, "dx": randf_range(-20, 20)})
+
+
+func add_mat_note(mat: String, n: int, crit: bool) -> void:
+	mat_notes.append({"mat": mat, "n": n, "crit": crit, "born": game.match_time})
+	if mat_notes.size() > 8:
+		mat_notes.pop_front()
+
+
 func add_damage_arc(from: Vector3) -> void:
 	arcs.append({"from": from, "born": game.match_time})
 
@@ -40,6 +51,9 @@ func add_pickup_note(it: Dictionary) -> void:
 	if it.has("ammo"):
 		t = "+%d %s ammo" % [it.get("count", Items.AMMO_PICKUP[it.ammo]), it.ammo]
 		c = Items.AMMO_COLORS[it.ammo]
+	elif it.has("mat"):
+		add_mat_note(it.mat, int(it.count), false)
+		return
 	else:
 		t = "+ " + Items.label(it)
 		c = Items.RARITY_COLORS[it.rarity]
@@ -84,6 +98,8 @@ func _draw() -> void:
 	_draw_hotbar(sz, s)
 	_draw_centre(sz, s, ctl, now)
 	_draw_notes(sz, now)
+	if p.alive():
+		_draw_target_health(sz, ctl, p)
 	if ctl.show_map:
 		_draw_full_map(sz, s)
 	if not p.alive() and not game.over:
@@ -245,7 +261,10 @@ func _draw_hotbar(sz: Vector2, s: Actor) -> void:
 	var total := (box + gap) * 6
 	var x0 := sz.x - total - 18
 	var y0 := sz.y - box - 26
-	for i in 6:
+	_draw_mats(Vector2(x0 - 132, y0 - 4), s)
+	if s.build_piece != "":
+		_draw_build_bar(x0, y0, box, gap, s)
+	for i in (0 if s.build_piece != "" else 6):
 		var slot := i - 1                                  # the first box is the pickaxe
 		var r := Rect2(x0 + i * (box + gap), y0, box, box)
 		var it = s.slots[slot] if slot >= 0 else null
@@ -282,6 +301,70 @@ func _draw_hotbar(sz: Vector2, s: Actor) -> void:
 		draw_rect(Rect2(ax, y0 - 24, 10, 10), Items.AMMO_COLORS[t])
 		txt(Vector2(ax + 14, y0 - 14), "%d" % s.ammo[t], 13, Color(0.9, 0.92, 0.95))
 		ax += 52
+
+
+func _draw_mats(o: Vector2, s: Actor) -> void:
+	var now: float = game.match_time
+	panel(Rect2(o.x - 6, o.y - 4, 122, 92))
+	for i in Structures.MATS.size():
+		var m: String = Structures.MATS[i]
+		var y := o.y + i * 29
+		var col: Color = Items.MAT_COLORS[m]
+		draw_rect(Rect2(o.x, y + 4, 18, 18), col)
+		draw_rect(Rect2(o.x, y + 4, 18, 18), Color(0, 0, 0, 0.6), false, 1.5)
+		var low: bool = s.build_piece != "" and m == s.build_mat and int(s.mats[m]) < Structures.COST
+		txt(Vector2(o.x + 26, y + 21), "%d" % int(s.mats[m]), 19, Color(1.0, 0.45, 0.35) if low else Color.WHITE)
+		if s.build_piece != "" and m == s.build_mat:
+			draw_rect(Rect2(o.x - 4, y + 1, 114, 26), Color(1, 1, 1, 0.9), false, 2.0)
+	# +N popups rise from the counter they belong to
+	for n in mat_notes.duplicate():
+		var age: float = now - n.born
+		if age > 1.4:
+			mat_notes.erase(n)
+			continue
+		var i2: int = Structures.MATS.find(n.mat)
+		var y2 := o.y + i2 * 29 + 20 - age * 26.0
+		var c: Color = Color(0.4, 0.8, 1.0) if n.crit else Items.MAT_COLORS[n.mat]
+		c.a = clampf(1.4 - age, 0.0, 1.0)
+		txt(Vector2(o.x - 64, y2), "+%d" % n.n, 20 if n.crit else 17, c, HORIZONTAL_ALIGNMENT_RIGHT, 56)
+
+
+func _draw_build_bar(x0: float, y0: float, box: float, gap: float, s: Actor) -> void:
+	var keys := {"wall": "Q", "floor": "Z", "stairs": "C", "cone": "V"}
+	for i in Structures.PIECES.size():
+		var p: String = Structures.PIECES[i]
+		var r := Rect2(x0 + i * (box + gap), y0, box, box)
+		var act: bool = s.build_piece == p
+		draw_rect(r, Color(0.15, 0.35, 0.6, 0.85) if act else Color(0.08, 0.1, 0.14, 0.7))
+		draw_rect(r, Color(1, 1, 1, 0.95) if act else Color(1, 1, 1, 0.25), false, 3.0 if act else 1.5)
+		txt(r.position + Vector2(5, 15), keys[p], 12, Color(1, 1, 1, 0.8))
+		txt(r.position + Vector2(0, 47), Structures.PIECE_NAMES[p], 14, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, box)
+	var r2 := Rect2(x0 + 4 * (box + gap), y0, box * 2 + gap, box)
+	var mc: Color = Items.MAT_COLORS[s.build_mat]
+	draw_rect(r2, Color(mc.r * 0.45, mc.g * 0.45, mc.b * 0.45, 0.85))
+	draw_rect(r2, Color(1, 1, 1, 0.6), false, 1.5)
+	txt(r2.position + Vector2(0, 30), Items.MAT_NAMES[s.build_mat], 20, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r2.size.x)
+	var enough: bool = int(s.mats[s.build_mat]) >= Structures.COST
+	txt(r2.position + Vector2(0, 52), "%d each   %d left" % [Structures.COST, int(s.mats[s.build_mat])], 13, Color.WHITE if enough else Color(1.0, 0.45, 0.35), HORIZONTAL_ALIGNMENT_CENTER, r2.size.x)
+	txt(r2.position + Vector2(0, 70), "Right click: material" if game.controller.touch == null else "MAT: material", 12, Color(0.85, 0.88, 0.92), HORIZONTAL_ALIGNMENT_CENTER, r2.size.x)
+
+
+func _draw_target_health(sz: Vector2, ctl: Node, s: Actor) -> void:
+	var e = ctl.look_entry
+	if e == null or e.dead:
+		return
+	if e.kind != "build" and e.hp >= e.max and s.active != -1:
+		return
+	var w := 200.0
+	var r := Rect2(sz.x / 2 - w / 2, sz.y / 2 + 44, w, 10)
+	draw_rect(r, Color(0, 0, 0, 0.55))
+	var k := clampf(e.hp / e.max, 0.0, 1.0)
+	var col: Color = Items.MAT_COLORS[e.mat]
+	draw_rect(Rect2(r.position, Vector2(w * k, r.size.y)), col)
+	var label: String = (Items.MAT_NAMES[e.mat] + " " + Structures.PIECE_NAMES[e.piece]) if e.kind == "build" else e.name.replace("_", " ").capitalize()
+	if e.kind == "build" and e.get("born", -9.0) + Structures.BUILD_TIME[e.mat] > game.match_time:
+		label += "  (building)"
+	txt(Vector2(0, r.position.y - 4), "%s   %d / %d" % [label, int(ceil(e.hp)), int(e.max)], 14, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, sz.x)
 
 
 func _draw_centre(sz: Vector2, s: Actor, ctl: Node, now: float) -> void:

@@ -16,6 +16,7 @@ var prompt := ""
 var prompt_target = null
 var zoom := 0.0
 var touch_use := false
+var look_entry = null                    # the breakable thing under the crosshair, for the HUD
 var touch: Control                       # on-screen controls, only on touch devices
 
 
@@ -91,12 +92,21 @@ func _physics_process(delta: float) -> void:
 		if Input.is_action_just_pressed("jump"):
 			a.in_jump = true
 		a.in_dive = a.state == Actor.State.SKYDIVE and (pitch < -0.75 or Input.is_action_pressed("sprint"))
-		var it = a.item()
-		var auto: bool = it != null and Items.def(it).get("auto", false)
-		if Input.is_action_just_pressed("fire") or (auto and Input.is_action_pressed("fire")) or (it == null and Input.is_action_pressed("fire")):
-			a.in_fire = true
-		elif not Input.is_action_pressed("fire"):
+		for bk in [["build_wall", "wall"], ["build_floor", "floor"], ["build_stairs", "stairs"], ["build_cone", "cone"]]:
+			if Input.is_action_just_pressed(bk[0]):
+				a.set_build(bk[1])
+		if a.build_piece != "":
 			a.in_fire = false
+			if Input.is_action_just_pressed("aim"):
+				a.cycle_build_mat()
+			_build_tick(delta, Input.is_action_pressed("fire"), Input.is_action_just_pressed("fire"))
+		else:
+			var it = a.item()
+			var auto: bool = it != null and Items.def(it).get("auto", false)
+			if Input.is_action_just_pressed("fire") or (auto and Input.is_action_pressed("fire")) or (it == null and Input.is_action_pressed("fire")):
+				a.in_fire = true
+			elif not Input.is_action_pressed("fire"):
+				a.in_fire = false
 		if Input.is_action_just_pressed("reload"):
 			a.start_reload()
 		if Input.is_action_just_pressed("pickaxe"):
@@ -109,6 +119,10 @@ func _physics_process(delta: float) -> void:
 	elif a.alive() and demo:
 		yaw = lerp_angle(yaw, a.aim_yaw, clampf(delta * 4.0, 0.0, 1.0))
 		pitch = lerpf(pitch, clampf(a.aim_pitch, -0.6, 0.4) - 0.12, clampf(delta * 4.0, 0.0, 1.0))
+	game.structures.update_preview(a, not demo)
+	look_entry = null
+	if a.alive() and a.state == Actor.State.GROUND and cam:
+		look_entry = game.structures.looked_at(cam.global_position, -cam.global_transform.basis.z, 14.0, a)
 	if not a.alive() and touch != null and touch.fire:
 		touch.fire = false
 		spectate = _next_alive(spectate)
@@ -128,7 +142,16 @@ func _touch_input() -> void:
 	if touch.take("jump"):
 		a.in_jump = true
 	a.in_dive = a.state == Actor.State.SKYDIVE and pitch < -0.75
-	a.in_fire = touch.fire
+	for bk in [["b_wall", "wall"], ["b_floor", "floor"], ["b_stairs", "stairs"], ["b_cone", "cone"]]:
+		if touch.take(bk[0]):
+			a.set_build(bk[1])
+	if a.build_piece != "":
+		a.in_fire = false
+		if touch.take("mat"):
+			a.cycle_build_mat()
+		_build_tick(get_physics_process_delta_time(), touch.fire, false)
+	else:
+		a.in_fire = touch.fire
 	if touch.take("reload"):
 		a.start_reload()
 	if touch.take("drop"):
@@ -139,6 +162,14 @@ func _touch_input() -> void:
 	_interaction()
 	if not a.alive() and touch.fire:
 		touch.fire = false
+
+
+func _build_tick(delta: float, held: bool, just: bool) -> void:
+	## Click to place; holding the button keeps placing as the target changes (turbo build).
+	a.build_cd = maxf(a.build_cd - delta, 0.0)
+	if (just or held) and a.build_cd <= 0.0:
+		if game.structures.place(a):
+			a.build_cd = 0.09
 
 
 func _use_pressed() -> bool:
@@ -178,7 +209,7 @@ func _process(delta: float) -> void:
 	if not a.alive():
 		yaw = lerp_angle(yaw, s.aim_yaw, clampf(delta * 5.0, 0.0, 1.0))
 		pitch = lerpf(pitch, -0.18, clampf(delta * 3.0, 0.0, 1.0))
-	var aiming: bool = a.alive() and not demo and (Input.is_action_pressed("aim") or (touch != null and touch.aim)) and a.state == Actor.State.GROUND
+	var aiming: bool = a.alive() and not demo and a.build_piece == "" and (Input.is_action_pressed("aim") or (touch != null and touch.aim)) and a.state == Actor.State.GROUND
 	zoom = move_toward(zoom, 1.0 if aiming else 0.0, delta * 7.0)
 	var it = s.item()
 	var scoped: bool = it != null and it.id == "sniper_rifle"

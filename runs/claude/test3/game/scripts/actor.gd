@@ -27,6 +27,10 @@ var body: Character
 var spread_mul := 1.0                    # bots: aim error on top of the weapon spread
 var placement := 0
 var ever_armed := false
+var mats := {"wood": 0, "brick": 0, "metal": 0}
+var build_piece := ""                    # "" = not building, else wall / floor / stairs / cone
+var build_mat := "wood"
+var build_cd := 0.0
 
 # control inputs, written by the player or the bot brain every physics tick
 var in_move := Vector2.ZERO              # x = right, y = forward, relative to aim_yaw
@@ -175,8 +179,9 @@ func item() -> Variant:
 
 
 func select(i: int) -> void:
-	if i == active or i < -1 or i >= Items.SLOTS:
+	if (i == active and build_piece == "") or i < -1 or i >= Items.SLOTS:
 		return
+	build_piece = ""
 	active = i
 	reloading = 0.0
 	cancel_use()
@@ -184,7 +189,26 @@ func select(i: int) -> void:
 	_refresh_held()
 
 
+func set_build(piece: String) -> void:
+	## Enter build mode with this piece; the same key again leaves it.
+	build_piece = "" if build_piece == piece else piece
+	reloading = 0.0
+	cancel_use()
+	in_fire = false
+	if build_piece != "":
+		body.hold("")
+	else:
+		_refresh_held()
+
+
+func cycle_build_mat() -> void:
+	build_mat = Structures.MATS[(Structures.MATS.find(build_mat) + 1) % Structures.MATS.size()]
+
+
 func _refresh_held() -> void:
+	if build_piece != "":
+		body.hold("")
+		return
 	var it = item()
 	body.hold(Items.def(it).asset if it != null else "pickaxe")
 
@@ -200,6 +224,8 @@ func wants(it: Dictionary) -> bool:
 	## Would walking over this pick it up?
 	if it.has("ammo"):
 		return true
+	if it.has("mat"):
+		return int(mats[it.mat]) < Structures.MAX_MATS
 	var d: Dictionary = Items.def(it)
 	if d.has("stack"):
 		for s in slots:
@@ -211,6 +237,9 @@ func wants(it: Dictionary) -> bool:
 func add_item(it: Dictionary) -> bool:
 	if it.has("ammo"):
 		ammo[it.ammo] += it.get("count", Items.AMMO_PICKUP[it.ammo])
+		return true
+	if it.has("mat"):
+		mats[it.mat] = mini(int(mats[it.mat]) + int(it.count), Structures.MAX_MATS)
 		return true
 	var d: Dictionary = Items.def(it)
 	if d.has("stack"):
@@ -304,6 +333,8 @@ func _combat(delta: float) -> void:
 			it.loaded += take
 			ammo[d.ammo] -= take
 		return
+	if build_piece != "":
+		return                                         # placing pieces is driven by the controller
 	if not in_fire or fire_cd > 0.0:
 		return
 	if it == null:
@@ -378,10 +409,17 @@ func _swing_pickaxe() -> void:
 	fire_cd = 0.55
 	body.swing = 1.0
 	var from := eye()
-	var hitp = game.ray(from, from + aim_dir() * 2.6, self)
-	if hitp.has("collider") and hitp.collider is Actor:
+	var dir := aim_dir()
+	if is_player:                                      # the pickaxe hits the point under the crosshair
+		dir = (game.player_aim_point() - from).normalized()
+	var hitp = game.ray(from, from + dir * 3.2, self)
+	if hitp.is_empty():
+		return
+	if hitp.collider is Actor:
 		(hitp.collider as Actor).hit(PICKAXE_DAMAGE, self, false, global_position)
 		game.on_damage_dealt(self, hitp.collider, PICKAXE_DAMAGE, hitp.position)
+	else:
+		game.structures.pickaxe_hit(self, hitp)
 
 
 func _shoot(it: Dictionary, d: Dictionary) -> void:
@@ -412,6 +450,8 @@ func _shoot(it: Dictionary, d: Dictionary) -> void:
 				dmg *= 1.5                                    # headshot
 			victim.hit(dmg, self, false, global_position)
 			game.on_damage_dealt(self, victim, dmg, endp)
+		elif res.has("collider"):
+			game.structures.damage_at(res.collider, res.get("shape", 0), Items.damage(it), self, endp)
 		game.fx_tracer(from + dir * 1.0 + Vector3(0, -0.2, 0), endp, it.rarity)
 
 
@@ -471,6 +511,12 @@ func die(killer: Actor) -> void:
 			game.spawn_pickup(slots[i], p + Vector3(cos(n * 1.3), 0, sin(n * 1.3)) * 1.1)
 			slots[i] = null
 			n += 1
+	for m in Structures.MATS:
+		if int(mats[m]) > 0:
+			game.spawn_pickup({"mat": m, "count": mats[m]}, p + Vector3(cos(n * 1.3), 0, sin(n * 1.3)) * 2.2)
+			mats[m] = 0
+			n += 1
+	build_piece = ""
 	for t in Items.AMMO_TYPES:
 		if ammo[t] > 0:
 			game.spawn_pickup({"ammo": t, "count": ammo[t]}, p + Vector3(cos(n * 1.3), 0, sin(n * 1.3)) * 1.7)

@@ -41,6 +41,8 @@ var doors: Array = []
 var shots_dir := ""
 var shot_times := [5.0, 22.0, 45.0, 70.0, 100.0, 125.0, 160.0]
 var shot_i := 0
+var structures: Structures
+var buildtest := false
 
 
 func _ready() -> void:
@@ -48,6 +50,7 @@ func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a == "--demo": demo = true
 		if a == "--autotest": autotest = true; demo = true
+		if a == "--buildtest": buildtest = true
 		if a.begins_with("--seed="): seed_v = int(a.get_slice("=", 1))
 		if a.begins_with("--shots="):
 			shots_dir = a.get_slice("=", 1)
@@ -60,6 +63,10 @@ func _ready() -> void:
 	fx_root = Node3D.new()
 	add_child(fx_root)
 	_setup_doors()
+	structures = Structures.new()
+	add_child(structures)
+	structures.setup(self)
+	stats["destructible_parts"] = structures.level_count
 	_setup_nav()
 	_setup_blimp()
 	_setup_loot()
@@ -78,6 +85,10 @@ func _ready() -> void:
 		if sun:
 			sun.shadow_enabled = false
 		get_viewport().msaa_3d = Viewport.MSAA_DISABLED
+	if buildtest:
+		var t := preload("res://scripts/selftest.gd").new()
+		add_child(t)
+		t.setup(self)
 	if autotest:
 		Engine.time_scale = 8.0
 		Engine.max_physics_steps_per_frame = 16
@@ -116,6 +127,12 @@ func _update_doors() -> void:
 				d.shape.set_deferred("disabled", near)
 			var tw := create_tween()
 			tw.tween_property(d.node, "rotation:y", d.yaw + (deg_to_rad(105) * d.sign if near else 0.0), 0.25)
+
+
+func forget_door(n: Node) -> void:
+	for d in doors.duplicate():
+		if d.node == n:
+			doors.erase(d)
 
 
 func nav_path(from: Vector3, to: Vector3) -> PackedVector3Array:
@@ -343,6 +360,8 @@ func _check_win() -> void:
 		for a in actors:
 			armed_ever += 1 if a.ever_armed else 0
 		stats["ever_armed"] = armed_ever
+		stats["pieces_built"] = structures.built
+		stats["parts_destroyed"] = structures.destroyed
 		print("MATCH_OVER ", JSON.stringify({"winner": winner.display_name if winner else "nobody", "winner_kills": winner.kills if winner else 0,
 				"time": snappedf(match_time, 0.1), "player_place": player.placement, "player_kills": player.kills, "storm_phase": storm.phase + 1, "stats": stats}))
 		if autotest:
@@ -415,8 +434,8 @@ func spawn_pickup(it: Dictionary, pos: Vector3) -> void:
 	n.position = (res.position if not res.is_empty() else pos) + Vector3(0, 0.45, 0)
 	var color: Color
 	var model: Node3D
-	if it.has("ammo"):
-		color = Items.AMMO_COLORS[it.ammo]
+	if it.has("ammo") or it.has("mat"):
+		color = Items.AMMO_COLORS[it.ammo] if it.has("ammo") else Items.MAT_COLORS[it.mat]
 		model = Node3D.new()
 		var mi := MeshInstance3D.new()
 		var bm := BoxMesh.new()
@@ -580,6 +599,7 @@ func explode(pos: Vector3, pr: Dictionary) -> void:
 			var dmg: float = pr.damage * clampf(1.15 - d / pr.radius, 0.2, 1.0) * (0.5 if a == pr.owner else 1.0)
 			a.hit(dmg, pr.owner, false, pos)
 			on_damage_dealt(pr.owner, a, dmg, a.eye())
+	structures.explode(pos, pr.radius, pr.damage * Structures.EXPLOSION_MULT, pr.owner)
 	fx_blast(pos, pr.radius)
 
 

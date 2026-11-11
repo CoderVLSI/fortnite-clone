@@ -8,6 +8,8 @@ const AMMO_TYPES := ["light", "medium", "heavy", "shells", "rockets"]
 const AMMO_COLORS := {"light": Color(0.95, 0.85, 0.5), "medium": Color(0.9, 0.6, 0.3), "heavy": Color(0.6, 0.75, 0.95), "shells": Color(0.9, 0.3, 0.25), "rockets": Color(0.55, 0.7, 0.35)}
 const AMMO_PICKUP := {"light": 24, "medium": 30, "heavy": 8, "shells": 8, "rockets": 3}
 const SLOTS := 5
+const MAT_NAMES := {"wood": "Wood", "brick": "Brick", "metal": "Metal"}
+const MAT_COLORS := {"wood": Color(0.85, 0.6, 0.3), "brick": Color(0.88, 0.42, 0.32), "metal": Color(0.62, 0.7, 0.82)}
 
 ## kind: weapon | throwable | heal | shield
 ## Weapons: damage per hit, shots per second, magazine, reload seconds, spread in degrees, effective range in metres.
