@@ -51,6 +51,8 @@ var mantle_dur := 0.45
 var jump_air_t := 99.0                   # seconds since the last jump, for mantling mid-jump
 var foam_t := 0.0
 var shape_node: CollisionShape3D
+var zip = null                           # {line, t, dir} while riding a zip line
+var launched := false                    # rising from a launch pad
 
 # control inputs, written by the player or the bot brain every physics tick
 var in_move := Vector2.ZERO              # x = right, y = forward, relative to aim_yaw
@@ -125,6 +127,8 @@ func _physics_process(delta: float) -> void:
 	fire_cd = maxf(fire_cd - delta, 0.0)
 	if mantle_t >= 0.0:
 		_mantle_step(delta)
+	elif zip != null:
+		_zip_step(delta)
 	else:
 		match state:
 			State.BLIMP:
@@ -133,11 +137,19 @@ func _physics_process(delta: float) -> void:
 				if in_jump:
 					jump_from_blimp()
 			State.SKYDIVE:
-				var fall := -52.0 if in_dive else -30.0
-				var steer := 9.0 if in_dive else 16.0
-				_air_move(delta, fall, steer, 3.0)
-				if height_above_ground() <= GLIDER_HEIGHT:
-					state = State.GLIDE
+				if launched and velocity.y > 0.0:          # still rising from a launch pad
+					var w := _wish() * 12.0
+					velocity.x = move_toward(velocity.x, w.x, 20.0 * delta)
+					velocity.z = move_toward(velocity.z, w.z, 20.0 * delta)
+					velocity.y -= 22.0 * delta
+					move_and_slide()
+				else:
+					launched = false
+					var fall := -52.0 if in_dive else -30.0
+					var steer := 9.0 if in_dive else 16.0
+					_air_move(delta, fall, steer, 3.0)
+					if height_above_ground() <= GLIDER_HEIGHT:
+						state = State.GLIDE
 			State.GLIDE:
 				_air_move(delta, -7.5, 14.0, 4.0)
 				if depth() > SWIM_IN:
@@ -155,6 +167,47 @@ func _physics_process(delta: float) -> void:
 		_combat(delta)
 	elif using > 0.0:
 		cancel_use()
+
+
+func launch(up: float) -> void:
+	## Thrown into the air by a launch pad; the glider opens on the way down.
+	zip = null
+	sliding = false
+	crouched = false
+	_set_height(STAND_H)
+	cancel_use()
+	state = State.SKYDIVE
+	launched = true
+	velocity = Vector3(velocity.x * 0.5, up, velocity.z * 0.5)
+	global_position += Vector3(0, 0.3, 0)
+
+
+func start_zip(line: Dictionary, from_end: float) -> void:
+	zip = {"line": line, "t": from_end, "dir": 1.0 if from_end < 0.5 else -1.0}
+	sliding = false
+	crouched = false
+	_set_height(STAND_H)
+	velocity = Vector3.ZERO
+
+
+func _zip_step(delta: float) -> void:
+	var z: Dictionary = zip.line
+	zip.t = clampf(float(zip.t) + float(zip.dir) * game.events.ZIP_SPEED * delta / float(z.length), 0.0, 1.0)
+	var p: Vector3 = game.events.cable_point(z, zip.t)
+	var ahead: Vector3 = game.events.cable_point(z, clampf(float(zip.t) + float(zip.dir) * 0.01, 0.0, 1.0))
+	var dir := (ahead - p).normalized()
+	global_position = p - Vector3(0, 1.95, 0)              # hanging under the cable
+	velocity = dir * game.events.ZIP_SPEED
+	var done: bool = (zip.dir > 0.0 and zip.t >= 1.0) or (zip.dir < 0.0 and zip.t <= 0.0)
+	if in_jump or done:
+		in_jump = false
+		zip = null
+		state = State.GROUND
+		velocity = Vector3(dir.x, 0, dir.z) * 6.0 + Vector3(0, 3.0, 0)
+		fall_start = global_position.y
+		jump_air_t = 99.0
+	if state == State.GROUND and zip != null:
+		_combat(delta)
 
 
 func jump_from_blimp() -> void:
@@ -479,6 +532,8 @@ func wants(it: Dictionary) -> bool:
 		return true
 	if it.has("mat"):
 		return int(mats[it.mat]) < Structures.MAX_MATS
+	if it.has("forage"):
+		return hp < 100.0 if it.forage == "apple" else shield < 100.0
 	var d: Dictionary = Items.def(it)
 	if d.has("stack"):
 		for s in slots:
@@ -493,6 +548,12 @@ func add_item(it: Dictionary) -> bool:
 		return true
 	if it.has("mat"):
 		mats[it.mat] = mini(int(mats[it.mat]) + int(it.count), Structures.MAX_MATS)
+		return true
+	if it.has("forage"):                               # eaten on the spot
+		if it.forage == "apple":
+			hp = minf(hp + 5.0, 100.0)
+		else:
+			shield = minf(shield + 5.0, 100.0)
 		return true
 	var d: Dictionary = Items.def(it)
 	if d.has("stack"):
@@ -608,6 +669,14 @@ func _combat(delta: float) -> void:
 		"heal", "shield":
 			start_use()
 			in_fire = false
+		"launcher":
+			in_fire = false
+			fire_cd = 0.6
+			if game.events.deploy_pad(self):
+				it.count -= 1
+				if it.count <= 0:
+					slots[active] = null
+					_refresh_held()
 
 
 func start_reload() -> void:

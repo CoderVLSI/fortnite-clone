@@ -47,6 +47,10 @@ ICONS = {
     "shield": (None, "a glossy blue shield symbol"),
     "health": (None, "a glossy green plus sign medical cross symbol"),
     "edit": (None, "a simple white grid of three by three squares with the middle square highlighted blue"),
+    "small_shield": (None, "a small round glass bottle of glowing light blue liquid with a cork, a little shield potion"),
+    "healing_drink": (None, "a tall glass bottle of glowing green healing drink with a cork and a white label with a red cross"),
+    "launch_pad": (None, "a round blue launch pad platform with yellow upward chevron arrows on top, seen from above at an angle"),
+    "supply_drop": ("supply_drop", "this olive armoured supply crate with glowing blue strips, hanging under an orange and cream striped parachute"),
 }
 
 

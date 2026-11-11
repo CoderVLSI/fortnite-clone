@@ -211,7 +211,11 @@ func _decide() -> void:
 	var quiet: bool = target == null and game.match_time - a.last_hit_time > 4.0
 	if quiet and a.using <= 0.0:
 		var mk := a.find_item("medkit")
+		if mk < 0:
+			mk = a.find_item("healing_drink")
 		var sp := a.find_item("shield_potion")
+		if sp < 0 and a.shield < 50.0:
+			sp = a.find_item("small_shield")
 		if a.hp < 60.0 and mk >= 0:
 			a.select(mk); a.start_use(); mode = "heal"; return
 		if a.shield < 50.0 and sp >= 0:
@@ -259,7 +263,7 @@ func _wanted_pickup(max_d: float, weapons_only := false) -> Variant:
 		if d < bd and a.wants(p.item) and not _avoided(p.pos) and game.nav.walkable(p.pos) and p.pos.y - game.terrain.height(p.pos.x, p.pos.z) < 1.6 and game.storm.outside_next(p.pos) < 0.0:
 			if p.item.has("ammo") and d > 400.0:
 				continue
-			if weapons_only and (p.item.has("ammo") or Items.def(p.item).kind != "weapon"):
+			if weapons_only and (not p.item.has("id") or Items.def(p.item).kind != "weapon"):
 				continue
 			bd = d
 			best = p

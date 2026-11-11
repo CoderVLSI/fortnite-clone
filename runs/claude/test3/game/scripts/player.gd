@@ -230,8 +230,14 @@ func _interaction() -> void:
 		if _use_pressed():
 			game.open_container(c, a)
 		return
+	var zl = game.events.zip_near(a)
+	if zl != null:
+		prompt = "[E]  Ride the zip line" if touch == null else "USE  Ride the zip line"
+		if _use_pressed():
+			a.start_zip(zl[0], zl[1])
+		return
 	var p = game.nearest_pickup(a, 2.2)
-	if p != null and not a.wants(p.item):
+	if p != null and p.item.has("id") and not a.wants(p.item):
 		prompt = "[E]  Swap for %s" % Items.label(p.item)
 		if _use_pressed():
 			var it: Dictionary = p.item

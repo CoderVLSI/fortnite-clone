@@ -42,9 +42,11 @@ var shots_dir := ""
 var shot_times := [5.0, 22.0, 45.0, 70.0, 100.0, 125.0, 160.0]
 var shot_i := 0
 var structures: Structures
+var events: WorldEvents
 var buildtest := false
 var movetest := false
 var poses := false
+var eventtest := false
 
 
 func _ready() -> void:
@@ -55,6 +57,7 @@ func _ready() -> void:
 		if a == "--buildtest": buildtest = true
 		if a == "--movetest": movetest = true
 		if a == "--poses": poses = true
+		if a == "--eventtest": eventtest = true
 		if a.begins_with("--seed="): seed_v = int(a.get_slice("=", 1))
 		if a.begins_with("--shots="):
 			shots_dir = a.get_slice("=", 1)
@@ -73,6 +76,9 @@ func _ready() -> void:
 	stats["destructible_parts"] = structures.level_count
 	_setup_nav()
 	_setup_blimp()
+	events = WorldEvents.new()
+	add_child(events)
+	events.setup(self)
 	_setup_loot()
 	storm = Storm.new()
 	add_child(storm)
@@ -89,6 +95,10 @@ func _ready() -> void:
 		if sun:
 			sun.shadow_enabled = false
 		get_viewport().msaa_3d = Viewport.MSAA_DISABLED
+	if eventtest:
+		var et := preload("res://scripts/eventtest.gd").new()
+		add_child(et)
+		et.setup(self)
 	if poses:
 		var ps := preload("res://scripts/posesheet.gd").new()
 		add_child(ps)
@@ -446,6 +456,12 @@ func spawn_pickup(it: Dictionary, pos: Vector3) -> void:
 	n.position = (res.position if not res.is_empty() else pos) + Vector3(0, 0.45, 0)
 	var color: Color
 	var model: Node3D
+	if it.has("forage"):                               # apples and mushrooms just lie there
+		model = Models.make(it.forage)
+		n.add_child(model)
+		n.position.y -= 0.42
+		pickups.append({"node": n, "model": model, "item": it, "pos": n.position, "born": match_time, "still": true})
+		return
 	if it.has("ammo") or it.has("mat"):
 		color = Items.AMMO_COLORS[it.ammo] if it.has("ammo") else Items.MAT_COLORS[it.mat]
 		model = Node3D.new()
@@ -485,7 +501,8 @@ func remove_pickup(p: Dictionary) -> void:
 
 func _update_pickups(delta: float) -> void:
 	for p in pickups:
-		p.model.rotate_y(delta * 1.4)
+		if not p.get("still", false):
+			p.model.rotate_y(delta * 1.4)
 	# walking over ammo, stackables and anything that fits a free slot picks it up
 	pick_tick += 1
 	if pick_tick % 12 == 3:

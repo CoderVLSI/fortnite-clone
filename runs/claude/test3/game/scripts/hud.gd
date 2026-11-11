@@ -55,6 +55,9 @@ func add_pickup_note(it: Dictionary) -> void:
 	elif it.has("mat"):
 		add_mat_note(it.mat, int(it.count), false)
 		return
+	elif it.has("forage"):
+		t = "+5 health" if it.forage == "apple" else "+5 shield"
+		c = Color(0.5, 0.95, 0.4) if it.forage == "apple" else Color(0.45, 0.75, 1.0)
 	else:
 		t = "+ " + Items.label(it)
 		c = Items.RARITY_COLORS[it.rarity]
@@ -88,6 +91,8 @@ func item_icon(it: Dictionary) -> String:
 		return "ammo_" + it.ammo
 	if it.has("mat"):
 		return "mat_" + it.mat
+	if it.has("forage"):
+		return "health" if it.forage == "apple" else "shield"
 	return it.id
 
 
@@ -209,6 +214,19 @@ func _draw_map(origin: Vector2, extent: float, centre: Vector2, span: float, s: 
 		draw_dashed_line(a, _map_point(Vector2(e.x, e.z), origin, extent, centre, span), Color(1, 1, 1, 0.8), 2.0, 8.0)
 		var bp: Vector3 = game.blimp_pos()
 		draw_circle(_map_point(Vector2(bp.x, bp.z), origin, extent, centre, span), 5.0, Color(1.0, 0.6, 0.2))
+	# supply drops: falling ones pulse, landed unopened ones stay marked
+	for d in game.events.drops:
+		var dp: Vector3 = (d.node as Node3D).global_position
+		var opened := false
+		for c in game.containers:
+			if c.node == d.node and c.opened:
+				opened = true
+		if opened:
+			continue
+		var mp := _map_point(Vector2(dp.x, dp.z), origin, extent, centre, span)
+		var ms := (16.0 if big else 12.0) * (1.0 + (0.25 * sin(game.match_time * 6.0) if not d.landed else 0.0))
+		if not draw_icon("supply_drop", Rect2(mp - Vector2(ms, ms), Vector2(ms, ms) * 2.0)):
+			draw_circle(mp, ms * 0.5, Color(0.3, 0.75, 1.0))
 	# the player arrow
 	var pp := _map_point(Vector2(s.global_position.x, s.global_position.z), origin, extent, centre, span)
 	var yaw: float = game.controller.yaw

@@ -21,14 +21,18 @@ const DEFS := {
 	"rocket_launcher": {"name": "Rocket Launcher", "kind": "weapon", "asset": "rocket_launcher", "ammo": "rockets", "damage": 110.0, "rate": 0.75, "mag": 1, "reload": 3.2, "spread": 0.4, "range": 140.0, "pellets": 1, "auto": false, "rocket": true, "radius": 5.5},
 	"grenade": {"name": "Grenade", "kind": "throwable", "asset": "grenade", "stack": 6, "damage": 100.0, "radius": 5.5},
 	"medkit": {"name": "Med Kit", "kind": "heal", "asset": "medkit", "stack": 3, "amount": 100.0, "use_time": 6.0, "cap": 100.0},
-	"shield_potion": {"name": "Shield Potion", "kind": "shield", "asset": "shield_potion", "stack": 3, "amount": 50.0, "use_time": 4.0, "cap": 100.0},
+	"shield_potion": {"name": "Big Shield", "kind": "shield", "asset": "shield_potion", "stack": 3, "amount": 50.0, "use_time": 4.0, "cap": 100.0},
+	"small_shield": {"name": "Small Shield", "kind": "shield", "asset": "small_shield", "stack": 6, "amount": 25.0, "use_time": 2.0, "cap": 50.0},
+	"healing_drink": {"name": "Healing Drink", "kind": "heal", "asset": "healing_drink", "stack": 2, "amount": 50.0, "use_time": 2.5, "cap": 100.0},
+	"launch_pad": {"name": "Launch Pad", "kind": "launcher", "asset": "launch_pad", "stack": 1},
 }
 const WEAPON_IDS := ["pistol", "shotgun", "assault_rifle", "sniper_rifle", "rocket_launcher"]
 
 
 static func make(id: String, rarity := 0, count := 1) -> Dictionary:
 	var d: Dictionary = DEFS[id]
-	var it := {"id": id, "rarity": rarity if d.kind == "weapon" else (2 if id == "shield_potion" else (1 if id == "medkit" else 0)), "count": count}
+	var fixed := {"shield_potion": 2, "medkit": 1, "small_shield": 1, "healing_drink": 2, "launch_pad": 3}
+	var it := {"id": id, "rarity": rarity if d.kind == "weapon" else int(fixed.get(id, 0)), "count": count}
 	if d.kind == "weapon":
 		it["loaded"] = d.mag
 	return it
@@ -76,8 +80,11 @@ static func roll_weapon(rng: RandomNumberGenerator, bonus := 0.0) -> Dictionary:
 static func roll_floor(rng: RandomNumberGenerator) -> Dictionary:
 	## What lies on a floor loot spot.
 	var r := rng.randf()
-	if r < 0.52: return roll_weapon(rng)
-	if r < 0.66: return make("medkit")
-	if r < 0.82: return make("shield_potion")
-	if r < 0.9: return make("grenade", 0, 2)
+	if r < 0.50: return roll_weapon(rng)
+	if r < 0.59: return make("medkit")
+	if r < 0.67: return make("shield_potion")
+	if r < 0.75: return make("small_shield", 0, 2)
+	if r < 0.80: return make("healing_drink")
+	if r < 0.86: return make("grenade", 0, 2)
+	if r < 0.89: return make("launch_pad")
 	return {"ammo": AMMO_TYPES[rng.randi() % 5]}
