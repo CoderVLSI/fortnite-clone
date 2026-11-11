@@ -28,8 +28,11 @@ var open_t := 0.0
 var aim_err := Vector2.ZERO
 var err_t := 0.0
 var goal_container = null
+var goal_is_pickup := false
 var roam_until := 0.0
 var goal_since := 0.0
+var progress_t := 0.0
+var progress_d := 1e9
 var avoid: Array = []                   # [position, until] goals that could not be reached
 
 
@@ -37,7 +40,7 @@ func setup(g: Node, actor: Actor, s: float) -> void:
 	game = g
 	a = actor
 	skill = s
-	a.spread_mul = lerpf(3.2, 1.2, skill)
+	a.spread_mul = lerpf(2.4, 1.1, skill)
 	think = game.rng.randf() * 0.25
 	# landing spot: a point of interest, or anywhere on land
 	var T = game.terrain
@@ -131,6 +134,8 @@ func _set_goal(p: Vector3) -> void:
 		has_goal = true
 		repath = 0.0
 		goal_since = game.match_time
+		progress_t = game.match_time
+		progress_d = 1e9
 
 
 func _avoided(p: Vector3) -> bool:
@@ -142,6 +147,7 @@ func _avoided(p: Vector3) -> bool:
 
 func _give_up() -> void:
 	avoid.append([goal, game.match_time + 40.0])
+	goal_is_pickup = false
 	if avoid.size() > 12:
 		avoid.pop_front()
 	has_goal = false
@@ -174,10 +180,15 @@ func _decide() -> void:
 			_set_goal(pos + Vector3(cos(ang), 0, sin(ang)) * 14.0)
 		return
 	# a goal that cannot be reached is dropped for a while
-	if has_goal and (mode == "loot") and game.match_time - goal_since > 10.0:
-		_give_up()
+	if has_goal:
+		var gd := Vector2(goal.x - pos.x, goal.z - pos.z).length()
+		if gd < progress_d - 1.0:
+			progress_d = gd
+			progress_t = game.match_time
+		elif game.match_time - progress_t > 5.0 and mode != "storm":
+			_give_up()
 	# 1. the storm comes first
-	var must_move := out_now > -6.0 or (out_next > 0.0 and (s.shrinking or s.time_left() < 12.0 + out_next / 5.5))
+	var must_move := out_now > -6.0 or (out_next > 0.0 and (s.shrinking or s.time_left() < 22.0 + out_next / 4.5))
 	if must_move and s.active:
 		mode = "storm"
 		if not has_goal or s.outside_next(goal) > -3.0:
@@ -209,8 +220,11 @@ func _decide() -> void:
 		pk = _wanted_pickup(25.0, false)
 	if pk != null:
 		mode = "loot"
-		_set_goal(pk.pos)
+		if not (has_goal and goal_is_pickup and _pickup_at(goal) and a.global_position.distance_to(goal) < a.global_position.distance_to(pk.pos) + 5.0):
+			_set_goal(pk.pos)
+			goal_is_pickup = true
 		return
+	goal_is_pickup = false
 	var c = game.nearest_container(pos, 110.0 if not armed else 30.0)
 	if c != null and s.outside_next(c.pos) < 0.0 and not _avoided(c.pos):
 		mode = "loot"
@@ -244,6 +258,13 @@ func _wanted_pickup(max_d: float, weapons_only := false) -> Variant:
 			bd = d
 			best = p
 	return best
+
+
+func _pickup_at(p: Vector3) -> bool:
+	for k in game.pickups:
+		if k.pos.distance_squared_to(p) < 0.3 and a.wants(k.item) and not _avoided(k.pos):
+			return true
+	return false
 
 
 func _nearest_enemy() -> Actor:
@@ -374,6 +395,10 @@ func _fight(delta: float) -> void:
 		a.in_fire = dist < 2.6
 		return
 	if Items.def(it).kind != "weapon":
+		return
+	if dist > Items.def(it).range * 0.85:      # do not waste ammo beyond the weapon's range: close in instead
+		a.in_move = Vector2(strafe * 0.4, 1.0)
+		a.in_sprint = true
 		return
 	if pause_t > 0.0:
 		pause_t -= delta

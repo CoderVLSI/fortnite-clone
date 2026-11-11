@@ -1,11 +1,12 @@
 ## Bakes the walkability grid the bots path-find on and saves res://textures/navgrid.png.
-## One pixel per metre over the island: white = walkable. A cell is walkable when it is dry, not too steep and a
+## Two pixels per metre over the island: white = walkable. A cell is walkable when it is dry, not too steep and a
 ## player-sized capsule standing on it touches nothing but the ground. Bridge decks over water count as walkable.
 ##   godot --headless --path <project> -s scripts/bake_nav.gd
 extends SceneTree
 
 const Terrain := preload("res://scripts/terrain.gd")
 const HALF := 215
+const CELL := 0.5                        # fine enough that a thin wall always blocks at least one cell
 var island: Node3D
 var ticks := 0
 
@@ -30,19 +31,19 @@ func _physics_process(_d: float) -> bool:
 	var space := island.get_world_3d().direct_space_state
 	var terrain_body: StaticBody3D = island.get_node("Terrain/TerrainBody")
 	var cap := CapsuleShape3D.new()
-	cap.radius = 0.36
+	cap.radius = 0.3
 	cap.height = 1.3
 	var q := PhysicsShapeQueryParameters3D.new()
 	q.shape = cap
 	q.collision_mask = 1
 	q.exclude = [terrain_body.get_rid()]
-	var n := HALF * 2
+	var n := int(HALF * 2 / CELL)
 	var img := Image.create(n, n, false, Image.FORMAT_L8)
 	var free_cells := 0
 	for j in n:
 		for i in n:
-			var x := -HALF + i + 0.5
-			var z := -HALF + j + 0.5
+			var x := -HALF + (i + 0.5) * CELL
+			var z := -HALF + (j + 0.5) * CELL
 			var h := T.height(x, z)
 			var ok := false
 			if h >= 0.55:

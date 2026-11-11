@@ -11,6 +11,9 @@ config/features=PackedStringArray("4.5", "GL Compatibility")
 
 window/size/viewport_width=1600
 window/size/viewport_height=900
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=4
 
 [input]
 
@@ -39,3 +42,4 @@ aim={"deadzone": 0.2, "events": [Object(InputEventMouseButton,"button_index":2)]
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 anti_aliasing/quality/msaa_3d=2
+textures/vram_compression/import_etc2_astc=true

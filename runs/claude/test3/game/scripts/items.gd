@@ -6,7 +6,7 @@ const RARITY_NAMES := ["Common", "Uncommon", "Rare", "Epic", "Legendary"]
 const RARITY_COLORS := [Color(0.72, 0.74, 0.76), Color(0.35, 0.8, 0.25), Color(0.25, 0.6, 1.0), Color(0.72, 0.35, 0.95), Color(1.0, 0.75, 0.2)]
 const AMMO_TYPES := ["light", "medium", "heavy", "shells", "rockets"]
 const AMMO_COLORS := {"light": Color(0.95, 0.85, 0.5), "medium": Color(0.9, 0.6, 0.3), "heavy": Color(0.6, 0.75, 0.95), "shells": Color(0.9, 0.3, 0.25), "rockets": Color(0.55, 0.7, 0.35)}
-const AMMO_PICKUP := {"light": 18, "medium": 20, "heavy": 6, "shells": 5, "rockets": 2}
+const AMMO_PICKUP := {"light": 24, "medium": 30, "heavy": 8, "shells": 8, "rockets": 3}
 const SLOTS := 5
 
 ## kind: weapon | throwable | heal | shield

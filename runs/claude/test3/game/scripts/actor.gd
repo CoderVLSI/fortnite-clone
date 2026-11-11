@@ -60,7 +60,7 @@ func setup(g: Node, nm: String, player: bool, outfit: Color, accent: Color) -> v
 	floor_snap_length = 0.4
 	var cs := CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
-	cap.radius = 0.38
+	cap.radius = 0.3
 	cap.height = 1.8
 	cs.shape = cap
 	cs.position = Vector3(0, 0.9, 0)

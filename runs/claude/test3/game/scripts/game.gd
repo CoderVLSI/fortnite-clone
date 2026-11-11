@@ -38,6 +38,9 @@ var fx_root: Node3D
 var stats := {"shots": 0, "damage": 0.0, "pickups": 0, "containers_opened": 0}
 var pick_tick := 0
 var doors: Array = []
+var shots_dir := ""
+var shot_times := [5.0, 22.0, 45.0, 70.0, 100.0, 125.0, 160.0]
+var shot_i := 0
 
 
 func _ready() -> void:
@@ -46,6 +49,10 @@ func _ready() -> void:
 		if a == "--demo": demo = true
 		if a == "--autotest": autotest = true; demo = true
 		if a.begins_with("--seed="): seed_v = int(a.get_slice("=", 1))
+		if a.begins_with("--shots="):
+			shots_dir = a.get_slice("=", 1)
+			demo = true
+			Engine.max_physics_steps_per_frame = 90          # keep game time real even when frames are slow
 	rng.seed = seed_v
 	terrain = Terrain.new()
 	island = load("res://scenes/island.tscn").instantiate()
@@ -65,7 +72,12 @@ func _ready() -> void:
 	add_child(layer)
 	layer.add_child(hud)
 	hud.setup(self)
-	announce("Jump when you are ready  [Space]")
+	announce("Jump when you are ready")
+	if OS.has_feature("mobile"):                                   # phones: no shadows or MSAA, shorter view
+		var sun := island.find_child("Sun", true, false) as DirectionalLight3D
+		if sun:
+			sun.shadow_enabled = false
+		get_viewport().msaa_3d = Viewport.MSAA_DISABLED
 	if autotest:
 		Engine.time_scale = 8.0
 		Engine.max_physics_steps_per_frame = 16
@@ -107,7 +119,7 @@ func _update_doors() -> void:
 
 
 func nav_path(from: Vector3, to: Vector3) -> PackedVector3Array:
-	return nav.path(from, to)
+	return nav.path(from, to, can_see)
 
 
 func _setup_blimp() -> void:
@@ -260,17 +272,36 @@ func _physics_process(delta: float) -> void:
 		blimp.visible = false
 	if not storm.active and match_time > 20.0:
 		storm.start()
-	if autotest and OS.get_cmdline_user_args().has("--trace") and match_time > 34.0 and match_time < 62.0 and Engine.get_physics_frames() % 30 == 0:
+	if autotest and OS.get_cmdline_user_args().has("--trace") and match_time > 96.0 and match_time < 126.0 and Engine.get_physics_frames() % 30 == 0:
 		for idx in [3, 9]:
 			var a := actors[idx]
 			var br = a.get_child(a.get_child_count() - 1)
 			var wp: Vector3 = br.path[mini(br.path_i, br.path.size() - 1)] if br.path.size() > 0 else Vector3.ZERO
+			var cols := []
+			for ci in a.get_slide_collision_count():
+				var kc := a.get_slide_collision(ci)
+				var co = kc.get_collider()
+				cols.append("%s/%s n=(%.1f,%.1f,%.1f)" % [co.get_parent().name if co else "?", co.get_parent().get_parent().name if co else "?", kc.get_normal().x, kc.get_normal().y, kc.get_normal().z])
+			print("   COLL ", a.display_name, " ", cols, " walk_here=", nav.walkable(a.global_position), " walk_wp=", nav.walkable(wp))
 			print("TR %.1f %s st=%d mode=%s pos=(%.1f,%.1f,%.1f) goal=(%.1f,%.1f,%.1f) d=%.1f wp=(%.1f,%.1f) i=%d/%d vel=%.1f floor=%s move=%s since=%.1f" % [match_time, a.display_name, a.state, br.mode,
 					a.global_position.x, a.global_position.y, a.global_position.z, br.goal.x, br.goal.y, br.goal.z, Vector2(br.goal.x - a.global_position.x, br.goal.z - a.global_position.z).length(),
 					wp.x, wp.z, br.path_i, br.path.size(), a.velocity.length(), a.is_on_floor(), a.in_move, match_time - br.goal_since])
 	_update_projectiles(delta)
 	_update_pickups(delta)
 	_check_win()
+
+
+func _process(_d: float) -> void:
+	if shots_dir != "" and shot_i < shot_times.size() and match_time >= shot_times[shot_i]:
+		if shot_times[shot_i] == 100.0:
+			controller.show_map = true
+		elif shot_times[shot_i] == 125.0:
+			controller.show_map = false
+		get_viewport().get_texture().get_image().save_png(shots_dir.path_join("game_%03d.png" % int(shot_times[shot_i])))
+		print("SHOT ", shot_times[shot_i])
+		shot_i += 1
+		if shot_i >= shot_times.size() or over:
+			get_tree().quit()
 
 
 func alive_count() -> int:

@@ -44,7 +44,7 @@ void fragment() {
 	float rise = fract(UV.y * 6.0 + TIME * 0.35 + sin(UV.x * 60.0) * 0.2);
 	vec3 col = mix(vec3(0.42, 0.12, 0.78), vec3(0.78, 0.35, 1.0), bands * 0.6 + rise * 0.4);
 	ALBEDO = col;
-	ALPHA = 0.34 + 0.22 * bands + 0.12 * rise;
+	ALPHA = (0.16 + 0.16 * bands + 0.1 * rise) * mix(1.0, 0.25, smoothstep(0.35, 1.0, 1.0 - UV.y));   // fades towards the top
 }"""
 	wall_mat = ShaderMaterial.new()
 	wall_mat.shader = sh

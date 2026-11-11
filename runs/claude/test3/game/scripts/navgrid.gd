@@ -1,8 +1,10 @@
-## Path-finding for the bots: A* over the baked 1 m walkability grid (see bake_nav.gd).
+## Path-finding for the bots: A* over the baked 0.5 m walkability grid (see bake_nav.gd).
 class_name NavGrid
 extends RefCounted
 
 const HALF := 215
+const CELL := 0.5
+const N := 860
 var astar := AStarGrid2D.new()
 var ready := false
 var terrain
@@ -19,49 +21,66 @@ func load_grid(t) -> void:
 		return
 	if img.is_compressed():
 		img.decompress()
-	var n := HALF * 2
+	var n := N
 	astar.region = Rect2i(0, 0, n, n)
 	astar.cell_size = Vector2.ONE
-	astar.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+	astar.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ALWAYS
 	astar.default_compute_heuristic = AStarGrid2D.HEURISTIC_OCTILE
 	astar.default_estimate_heuristic = AStarGrid2D.HEURISTIC_OCTILE
 	astar.update()
+	img.convert(Image.FORMAT_L8)
+	var data := img.get_data()
 	for j in n:
+		var row := j * n
 		for i in n:
-			if img.get_pixel(i, j).r < 0.5:
+			if data[row + i] < 128:
 				astar.set_point_solid(Vector2i(i, j), true)
 	ready = true
 
 
 func cell(p: Vector3) -> Vector2i:
-	return Vector2i(clampi(int(floor(p.x)) + HALF, 0, HALF * 2 - 1), clampi(int(floor(p.z)) + HALF, 0, HALF * 2 - 1))
+	return Vector2i(clampi(int(floor((p.x + HALF) / CELL)), 0, N - 1), clampi(int(floor((p.z + HALF) / CELL)), 0, N - 1))
 
 
 func walkable(p: Vector3) -> bool:
 	return ready and not astar.is_point_solid(cell(p))
 
 
-func nearest_free(c: Vector2i, max_r := 8) -> Vector2i:
+func centre(c: Vector2i, y: float) -> Vector3:
+	return Vector3((c.x + 0.5) * CELL - HALF, y, (c.y + 0.5) * CELL - HALF)
+
+
+func nearest_free(c: Vector2i, world: Vector3, clear: Callable, max_r := 16) -> Vector2i:
+	## The closest walkable cell that can be reached in a straight line from `world`, so that someone pressed
+	## against a wall is never snapped to a cell on its far side.
 	if not astar.is_point_solid(c):
 		return c
+	var fallback := c
+	var have_fallback := false
+	var eye := world + Vector3(0, 1.0, 0)
 	for r in range(1, max_r + 1):
 		for dj in range(-r, r + 1):
 			for di in range(-r, r + 1):
 				if maxi(absi(di), absi(dj)) != r:
 					continue
-				var k := Vector2i(clampi(c.x + di, 0, HALF * 2 - 1), clampi(c.y + dj, 0, HALF * 2 - 1))
-				if not astar.is_point_solid(k):
+				var k := Vector2i(clampi(c.x + di, 0, N - 1), clampi(c.y + dj, 0, N - 1))
+				if astar.is_point_solid(k):
+					continue
+				if not have_fallback:
+					fallback = k
+					have_fallback = true
+				if clear.call(eye, centre(k, eye.y)):
 					return k
-	return c
+	return fallback
 
 
-func path(from: Vector3, to: Vector3) -> PackedVector3Array:
+func path(from: Vector3, to: Vector3, clear: Callable) -> PackedVector3Array:
 	var out := PackedVector3Array()
 	if not ready:
 		out.append(from); out.append(to)
 		return out
-	var a := nearest_free(cell(from))
-	var b := nearest_free(cell(to))
+	var a := nearest_free(cell(from), from, clear)
+	var b := nearest_free(cell(to), to, clear)
 	var ids := astar.get_id_path(a, b, true)
 	if ids.size() < 2:
 		out.append(from); out.append(to)
@@ -75,8 +94,8 @@ func path(from: Vector3, to: Vector3) -> PackedVector3Array:
 			keep = d != prev_dir
 			prev_dir = d
 		if keep:
-			var x := ids[i].x - HALF + 0.5
-			var z := ids[i].y - HALF + 0.5
+			var x := (ids[i].x + 0.5) * CELL - HALF
+			var z := (ids[i].y + 0.5) * CELL - HALF
 			out.append(Vector3(x, maxf(terrain.height(x, z), 0.3), z))
 	if cell(to) == b:
 		out.append(to)

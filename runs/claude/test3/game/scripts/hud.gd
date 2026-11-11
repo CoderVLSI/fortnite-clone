@@ -64,7 +64,7 @@ func panel(r: Rect2, col := Color(0.05, 0.07, 0.1, 0.55)) -> void:
 func _draw() -> void:
 	if game == null or game.controller == null:
 		return
-	var sz := size
+	var sz := get_viewport_rect().size       # the control itself has no layout size inside a CanvasLayer
 	var ctl = game.controller
 	var s: Actor = ctl.subject()
 	var p: Actor = game.player
@@ -319,7 +319,7 @@ func _draw_centre(sz: Vector2, s: Actor, ctl: Node, now: float) -> void:
 		txt(Vector2(0, c.y + 157), ctl.prompt, 20, Color(1.0, 0.92, 0.5), HORIZONTAL_ALIGNMENT_CENTER, sz.x)
 	# drop phase information
 	if s.state == Actor.State.BLIMP:
-		txt(Vector2(0, sz.y * 0.72), "[Space]  Jump", 30, Color(1.0, 0.92, 0.5), HORIZONTAL_ALIGNMENT_CENTER, sz.x)
+		txt(Vector2(0, sz.y * 0.72), "Tap JUMP to drop" if game.controller.touch != null else "[Space]  Jump", 30, Color(1.0, 0.92, 0.5), HORIZONTAL_ALIGNMENT_CENTER, sz.x)
 		txt(Vector2(0, sz.y * 0.72 + 30), "The blimp leaves the island in %d s" % int(maxf(game.BLIMP_TIME - now, 0.0)), 18, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, sz.x)
 	elif s.state == Actor.State.SKYDIVE or s.state == Actor.State.GLIDE:
 		var h := s.height_above_ground()

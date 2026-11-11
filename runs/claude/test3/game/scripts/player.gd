@@ -15,6 +15,8 @@ var show_map := false
 var prompt := ""
 var prompt_target = null
 var zoom := 0.0
+var touch_use := false
+var touch: Control                       # on-screen controls, only on touch devices
 
 
 func setup(g: Node, actor: Actor, is_demo: bool) -> void:
@@ -27,7 +29,15 @@ func setup(g: Node, actor: Actor, is_demo: bool) -> void:
 	add_child(cam)
 	cam.current = true
 	yaw = atan2(-game.blimp_dir.x, -game.blimp_dir.z)
-	if not demo and DisplayServer.get_name() != "headless":
+	var mobile := OS.has_feature("mobile") or OS.get_cmdline_user_args().has("--touch")
+	if mobile and not demo:
+		touch = preload("res://scripts/touch.gd").new()
+		var layer := CanvasLayer.new()
+		layer.layer = 2
+		add_child(layer)
+		layer.add_child(touch)
+		touch.setup(game)
+	elif not demo and DisplayServer.get_name() != "headless":
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
@@ -71,7 +81,9 @@ func _unhandled_input(e: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	prompt = ""
 	prompt_target = null
-	if a.alive() and not demo:
+	if a.alive() and not demo and touch != null:
+		_touch_input()
+	elif a.alive() and not demo:
 		a.aim_yaw = yaw
 		a.aim_pitch = pitch
 		a.in_move = Vector2(Input.get_axis("move_left", "move_right"), Input.get_axis("move_back", "move_forward"))
@@ -97,8 +109,44 @@ func _physics_process(delta: float) -> void:
 	elif a.alive() and demo:
 		yaw = lerp_angle(yaw, a.aim_yaw, clampf(delta * 4.0, 0.0, 1.0))
 		pitch = lerpf(pitch, clampf(a.aim_pitch, -0.6, 0.4) - 0.12, clampf(delta * 4.0, 0.0, 1.0))
+	if not a.alive() and touch != null and touch.fire:
+		touch.fire = false
+		spectate = _next_alive(spectate)
 	if not a.alive() and (spectate == null or not spectate.alive()):
 		spectate = _next_alive(spectate)
+
+
+func _touch_input() -> void:
+	var k := SENS * 1.6 * (0.55 if zoom > 0.5 else 1.0)
+	yaw -= touch.look.x * k
+	pitch = clampf(pitch - touch.look.y * k, -1.45, 1.35)
+	touch.look = Vector2.ZERO
+	a.aim_yaw = yaw
+	a.aim_pitch = pitch
+	a.in_move = touch.move
+	a.in_sprint = not touch.aim
+	if touch.take("jump"):
+		a.in_jump = true
+	a.in_dive = a.state == Actor.State.SKYDIVE and pitch < -0.75
+	a.in_fire = touch.fire
+	if touch.take("reload"):
+		a.start_reload()
+	if touch.take("drop"):
+		a.drop_slot(a.active)
+	if touch.take("map"):
+		show_map = not show_map
+	touch_use = touch.take("use")
+	_interaction()
+	if not a.alive() and touch.fire:
+		touch.fire = false
+
+
+func _use_pressed() -> bool:
+	if touch != null:
+		var u := touch_use
+		touch_use = false
+		return u
+	return Input.is_action_just_pressed("interact")
 
 
 func _interaction() -> void:
@@ -107,13 +155,13 @@ func _interaction() -> void:
 	var c = game.nearest_container(a.global_position, 2.8)
 	if c != null:
 		prompt = "[E]  Open %s" % {"chest": "chest", "ammo_box": "ammo box", "supply_drop": "supply drop"}[c.kind]
-		if Input.is_action_just_pressed("interact"):
+		if _use_pressed():
 			game.open_container(c, a)
 		return
 	var p = game.nearest_pickup(a, 2.2)
 	if p != null and not a.wants(p.item):
 		prompt = "[E]  Swap for %s" % Items.label(p.item)
-		if Input.is_action_just_pressed("interact"):
+		if _use_pressed():
 			var it: Dictionary = p.item
 			game.remove_pickup(p)
 			a.swap_with(it)
@@ -130,7 +178,7 @@ func _process(delta: float) -> void:
 	if not a.alive():
 		yaw = lerp_angle(yaw, s.aim_yaw, clampf(delta * 5.0, 0.0, 1.0))
 		pitch = lerpf(pitch, -0.18, clampf(delta * 3.0, 0.0, 1.0))
-	var aiming: bool = a.alive() and not demo and Input.is_action_pressed("aim") and a.state == Actor.State.GROUND
+	var aiming: bool = a.alive() and not demo and (Input.is_action_pressed("aim") or (touch != null and touch.aim)) and a.state == Actor.State.GROUND
 	zoom = move_toward(zoom, 1.0 if aiming else 0.0, delta * 7.0)
 	var it = s.item()
 	var scoped: bool = it != null and it.id == "sniper_rifle"
