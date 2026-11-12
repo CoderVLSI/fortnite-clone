@@ -16,7 +16,10 @@ var prompt := ""
 var prompt_target = null
 var zoom := 0.0
 var cam_up := 1.9
-var force_aim := false                   # tests: aim without the mouse button
+var force_aim := false
+const WHEEL := ["samba", "wave", "nod", "no"]      # up, right, down, left on the emote wheel
+var wheel_open := false
+var wheel_vec := Vector2.ZERO                   # tests: aim without the mouse button
 var touch_use := false
 var look_entry = null                    # the breakable thing under the crosshair, for the HUD
 var touch: Control                       # on-screen controls, only on touch devices
@@ -61,7 +64,9 @@ func _next_alive(after: Actor) -> Actor:
 func _unhandled_input(e: InputEvent) -> void:
 	if demo:
 		return
-	if e is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	if e is InputEventMouseMotion and wheel_open:
+		wheel_vec = (wheel_vec + e.relative).limit_length(140.0)     # the mouse picks a slice instead of looking
+	elif e is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		yaw -= e.relative.x * SENS * (0.55 if zoom > 0.5 else 1.0)
 		pitch = clampf(pitch - e.relative.y * SENS * (0.55 if zoom > 0.5 else 1.0), -1.45, 1.35)
 	elif e is InputEventKey and e.pressed and not e.echo:
@@ -95,6 +100,14 @@ func _physics_process(delta: float) -> void:
 			a.in_jump = true
 		if Input.is_action_just_pressed("crouch"):
 			a.in_crouch = true
+		if Input.is_action_just_pressed("emote"):
+			wheel_open = true
+			wheel_vec = Vector2.ZERO
+		elif wheel_open and not Input.is_action_pressed("emote"):
+			wheel_open = false
+			var pick := wheel_pick()
+			if pick >= 0:
+				a.start_emote(WHEEL[pick])
 		a.in_dive = a.state == Actor.State.SKYDIVE and (pitch < -0.75 or Input.is_action_pressed("sprint"))
 		for bk in [["build_wall", "wall"], ["build_floor", "floor"], ["build_stairs", "stairs"], ["build_cone", "cone"]]:
 			if Input.is_action_just_pressed(bk[0]):
@@ -155,6 +168,16 @@ func _touch_input() -> void:
 		a.in_jump = true
 	if touch.take("crouch"):
 		a.in_crouch = true
+	if touch.take("emote"):                        # first tap opens the wheel, drag towards an emote, tap again to play it
+		if wheel_open:
+			var tp := wheel_pick()
+			if tp >= 0:
+				a.start_emote(WHEEL[tp])
+		wheel_open = not wheel_open
+		wheel_vec = Vector2.ZERO
+	if wheel_open:
+		wheel_vec = (wheel_vec + touch.look).limit_length(140.0)
+		touch.look = Vector2.ZERO
 	a.in_dive = a.state == Actor.State.SKYDIVE and pitch < -0.75
 	for bk in [["b_wall", "wall"], ["b_floor", "floor"], ["b_stairs", "stairs"], ["b_cone", "cone"]]:
 		if touch.take(bk[0]):
@@ -184,6 +207,14 @@ func _touch_input() -> void:
 	_interaction()
 	if not a.alive() and touch.fire:
 		touch.fire = false
+
+
+func wheel_pick() -> int:
+	## The emote slice the wheel points at, or -1 near the centre.
+	if wheel_vec.length() < 25.0:
+		return -1
+	var ang := fposmod(atan2(wheel_vec.x, -wheel_vec.y) + PI / 4.0, TAU)
+	return int(ang / (PI / 2.0)) % 4
 
 
 func editing() -> bool:

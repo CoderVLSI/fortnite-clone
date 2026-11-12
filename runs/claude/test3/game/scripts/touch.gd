@@ -39,6 +39,7 @@ func buttons() -> Dictionary:
 		"b_cone": [Vector2(s.x - 320, s.y - 560), 34.0, "CONE"],
 		"mat": [Vector2(s.x - 240, s.y - 560), 34.0, "MAT"],
 		"edit": [Vector2(s.x - 160, s.y - 560), 34.0, "EDIT"],
+		"emote": [Vector2(s.x - 80, s.y - 560), 34.0, "EMOTE"],
 	}
 
 

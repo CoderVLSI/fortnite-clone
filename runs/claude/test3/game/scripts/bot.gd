@@ -92,6 +92,9 @@ func _ground(delta: float) -> void:
 	a.in_fire = false
 	a.in_sprint = true
 	a.in_move = Vector2.ZERO
+	if a.emote != "" and a.emote_t < 3.0 and not (target != null and target.alive() and game.match_time - target_seen < 0.5):
+		return                                     # finish the celebration unless someone shows up
+	a.stop_emote()
 	if mode == "fight" and target != null and target.alive():
 		_fight(delta)
 		return

@@ -248,6 +248,37 @@ func _ready() -> void:
 	await put(Vector3(rp.x, T.water_level(0.5) + 3.0, rp.y))
 	await frames(90)
 	check("the river is swimmable", a.state == Actor.State.SWIM)
+	# ---------------------------------------------------------------- emotes
+	await put(base, PI * 0.25)
+	await frames(20)
+	a.start_emote("samba")
+	await frames(30)
+	check("samba starts the Mixamo dance", a.emote == "samba" and a.body.clip == "x/Michelle_SambaDance", a.body.clip)
+	check("the held item is put away while dancing", a.body.held_id == "")
+	await frames(90)
+	await snap("move_04_emote_samba", PI * 1.25, -0.15)
+	a.in_move = Vector2(0, 1)
+	await frames(3)
+	check("moving ends the emote", a.emote == "")
+	a.in_move = Vector2.ZERO
+	await frames(20)
+	a.start_emote("nod")
+	await frames(int(Character.EMOTES.nod.length * 60.0) + 15)
+	check("a one-shot emote ends by itself", a.emote == "")
+	a.start_emote("wave")
+	await frames(40)
+	check("the wave uses the arm override", a.emote == "wave" and a.body.pose.arms_w > 0.5)
+	a.stop_emote()
+	var ctl = game.controller
+	var picks := []
+	for v in [Vector2(0, -60), Vector2(60, 0), Vector2(0, 60), Vector2(-60, 0), Vector2(5, 5)]:
+		ctl.wheel_vec = v
+		picks.append(ctl.wheel_pick())
+	check("the wheel picks up, right, down, left and nothing at the centre", picks == [0, 1, 2, 3, -1], str(picks))
+	ctl.wheel_open = true
+	ctl.wheel_vec = Vector2(70, -10)
+	await snap("move_05_emote_wheel", PI * 1.25, -0.15)
+	ctl.wheel_open = false
 	print("MOVETEST\n" + "\n".join(lines))
 	print("MOVETEST %s  (%d checks, %d failed)" % ["OK" if fails == 0 else "FAILED", lines.size(), fails])
 	get_tree().quit()

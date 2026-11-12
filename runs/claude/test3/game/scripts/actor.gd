@@ -53,6 +53,8 @@ var foam_t := 0.0
 var shape_node: CollisionShape3D
 var zip = null                           # {line, t, dir} while riding a zip line
 var launched := false
+var emote := ""                        # emote being performed (see Character.EMOTES)
+var emote_t := 0.0
 var bloom := 0.0                         # extra spread from firing quickly; decays                    # rising from a launch pad
 
 # control inputs, written by the player or the bot brain every physics tick
@@ -127,6 +129,8 @@ func _physics_process(delta: float) -> void:
 		return
 	fire_cd = maxf(fire_cd - delta, 0.0)
 	bloom = move_toward(bloom, 0.0, delta * 2.2)
+	if emote != "":
+		_emote_tick(delta)
 	if mantle_t >= 0.0:
 		_mantle_step(delta)
 	elif zip != null:
@@ -169,6 +173,34 @@ func _physics_process(delta: float) -> void:
 		_combat(delta)
 	elif using > 0.0:
 		cancel_use()
+
+
+func start_emote(name: String) -> void:
+	if state != State.GROUND or not is_on_floor() or not Character.EMOTES.has(name):
+		return
+	sliding = false
+	set_crouched(false)
+	cancel_use()
+	reloading = 0.0
+	build_piece = ""
+	emote = name
+	emote_t = 0.0
+	body.hold("")
+
+
+func stop_emote() -> void:
+	if emote == "":
+		return
+	emote = ""
+	_refresh_held()
+
+
+func _emote_tick(delta: float) -> void:
+	## Moving, jumping, firing or leaving the ground ends an emote; one-shot emotes end on their own.
+	emote_t += delta
+	var length: float = Character.EMOTES[emote].length
+	if in_move.length() > 0.2 or in_jump or in_fire or in_crouch or state != State.GROUND or (length > 0.0 and emote_t >= length):
+		stop_emote()
 
 
 func launch(up: float) -> void:
@@ -810,6 +842,7 @@ func _throw(it: Dictionary, d: Dictionary) -> void:
 func hit(amount: float, attacker: Actor, bypass_shield: bool, from: Vector3) -> void:
 	if state == State.DEAD or state == State.BLIMP or amount <= 0.0:
 		return
+	stop_emote()
 	if attacker != null and attacker != self:
 		last_attacker = attacker
 		last_hit_from = from

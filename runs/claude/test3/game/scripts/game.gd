@@ -450,6 +450,8 @@ func on_eliminated(victim: Actor, killer: Actor) -> void:
 		kill_feed.pop_front()
 	if victim == player:
 		controller.on_player_eliminated(killer)
+	elif killer != null and killer != player and killer.alive() and rng.randf() < 0.35:
+		killer.start_emote(["samba", "nod", "wave"][rng.randi() % 3])    # bots celebrate now and then
 
 
 # ----------------------------------------------------------------------------- pickups and containers

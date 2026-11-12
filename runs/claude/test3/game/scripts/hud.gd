@@ -130,6 +130,8 @@ func _draw() -> void:
 	_draw_hotbar(sz, s)
 	_draw_centre(sz, s, ctl, now)
 	_draw_notes(sz, now)
+	if ctl.wheel_open:
+		_draw_emote_wheel(sz, ctl)
 	if game.structures.edit_entry != null:
 		var hint := "EDITING   click or drag tiles   ·   G confirm   ·   R reset" if ctl.touch == null else "EDITING   tap tiles with FIRE   ·   EDIT confirm   ·   RELOAD reset"
 		var w := font.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 18).x + 40
@@ -454,6 +456,30 @@ func _xline(a: Vector2, b: Vector2, w := 2.0) -> void:
 func _xring(c: Vector2, r: float, w := 2.0) -> void:
 	draw_arc(c, r, 0, TAU, 48, Color(0, 0, 0, 0.6), w + 2.0)
 	draw_arc(c, r, 0, TAU, 48, Color(1, 1, 1, 0.92), w)
+
+
+func _draw_emote_wheel(sz: Vector2, ctl: Node) -> void:
+	var c := sz / 2
+	var r := 170.0
+	var pick: int = ctl.wheel_pick()
+	draw_circle(c, r, Color(0.05, 0.07, 0.1, 0.72))
+	for i in 4:
+		var mid := -PI / 2 + i * PI / 2                 # up, right, down, left
+		if i == pick:
+			var pts := PackedVector2Array([c])
+			for k in 13:
+				var a := mid - PI / 4 + PI / 2 * k / 12.0
+				pts.append(c + Vector2(cos(a), sin(a)) * r)
+			draw_colored_polygon(pts, Color(0.25, 0.6, 1.0, 0.55))
+		var edge := mid + PI / 4
+		draw_line(c + Vector2(cos(edge), sin(edge)) * 40.0, c + Vector2(cos(edge), sin(edge)) * r, Color(1, 1, 1, 0.25), 2.0)
+		var lp := c + Vector2(cos(mid), sin(mid)) * r * 0.62
+		var name: String = Character.EMOTES[ctl.WHEEL[i]].name
+		txt(lp + Vector2(-60, 7), name, 20, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, 120)
+	draw_arc(c, r, 0, TAU, 64, Color(1, 1, 1, 0.5), 2.0)
+	draw_circle(c, 38.0, Color(0.05, 0.07, 0.1, 0.9))
+	txt(c + Vector2(-50, 6), "EMOTE", 16, Color(1, 1, 1, 0.85), HORIZONTAL_ALIGNMENT_CENTER, 100)
+	draw_circle(c + ctl.wheel_vec.limit_length(r - 20.0), 6.0, Color(1.0, 0.85, 0.3))
 
 
 func _draw_crosshair(sz: Vector2, s: Actor, ctl: Node) -> void:

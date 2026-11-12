@@ -7,6 +7,14 @@ extends Node3D
 
 const SOLDIER := preload("res://assets/characters/Soldier.glb")
 const HIP_SCALE := 1.12                  # the Soldier's legs compared with the old blocky body
+## Emotes for the emote wheel: Mixamo clips (Michelle's samba, Xbot's nod and head shake) and a wave
+## done with the pose override. length 0 = loops until cancelled.
+const EMOTES := {
+	"samba": {"name": "Samba", "clip": "x/Michelle_SambaDance", "length": 0.0},
+	"nod": {"name": "Nod", "clip": "x/Xbot_agree", "length": 1.8},
+	"no": {"name": "No way", "clip": "x/Xbot_headShake", "length": 2.5},
+	"wave": {"name": "Wave", "clip": "Idle", "length": 2.4},
+}
 
 static var _lib: AnimationLibrary
 static var _tints := {}
@@ -158,6 +166,23 @@ func animate(delta: float, a: Actor) -> void:
 	var right_only := false
 	var c := "Idle"
 	var speed := 1.0
+	if a.emote != "":
+		var em: Dictionary = EMOTES[a.emote]
+		_play(em.clip, 1.0)
+		var wave: bool = a.emote == "wave"
+		var wav := sin(a.emote_t * 9.0)
+		dirs["RightUpperArm"] = Vector3(0.55, 0.85, -0.15).normalized()
+		dirs["RightLowerArm"] = Vector3(0.35 * wav, 1.0, -0.2).normalized()
+		legs_w = 0.0
+		arms_w = move_toward(arms_w, 1.0 if wave else 0.0, delta * 8.0)
+		hips_off = hips_off.lerp(Vector3.ZERO, clampf(delta * 14.0, 0.0, 1.0))
+		pose.dirs = dirs
+		pose.legs_w = 0.0
+		pose.arms_w = arms_w
+		pose.right_arm_only = true
+		pose.hips_offset = hips_off
+		rotation.x = lerp_angle(rotation.x, 0.0, clampf(delta * 8.0, 0.0, 1.0))
+		return
 	if st == Actor.State.SKYDIVE:
 		lean = deg_to_rad(-78 if a.in_dive else -62)
 		al = Vector3(deg_to_rad(20), 0, deg_to_rad(-70)); ar = Vector3(deg_to_rad(20), 0, deg_to_rad(70))
