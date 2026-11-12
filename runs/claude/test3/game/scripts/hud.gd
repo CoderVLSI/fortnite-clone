@@ -55,6 +55,9 @@ func add_pickup_note(it: Dictionary) -> void:
 	elif it.has("mat"):
 		add_mat_note(it.mat, int(it.count), false)
 		return
+	elif it.has("gold"):
+		t = "+%d gold" % int(it.gold)
+		c = Color(1.0, 0.82, 0.3)
 	elif it.has("forage"):
 		t = "+5 health" if it.forage == "apple" else "+5 shield"
 		c = Color(0.5, 0.95, 0.4) if it.forage == "apple" else Color(0.45, 0.75, 1.0)
@@ -91,6 +94,8 @@ func item_icon(it: Dictionary) -> String:
 		return "ammo_" + it.ammo
 	if it.has("mat"):
 		return "mat_" + it.mat
+	if it.has("gold"):
+		return "mat_gold"
 	if it.has("forage"):
 		return "health" if it.forage == "apple" else "shield"
 	return it.id
@@ -228,6 +233,12 @@ func _draw_map(origin: Vector2, extent: float, centre: Vector2, span: float, s: 
 		var bpp := _map_point(Vector2(bp.x, bp.z), origin, extent, centre, span)
 		if box.has_point(bpp):
 			draw_circle(bpp, 5.0, Color(1.0, 0.6, 0.2))
+	# upgrade benches: small gold anvils
+	for bn in game.events.benches:
+		var bp2 := _map_point(Vector2(bn.pos.x, bn.pos.z), origin, extent, centre, span)
+		if box.has_point(bp2):
+			draw_rect(Rect2(bp2 - Vector2(4, 3), Vector2(8, 6)), Color(1.0, 0.8, 0.25))
+			draw_rect(Rect2(bp2 - Vector2(4, 3), Vector2(8, 6)), Color(0, 0, 0, 0.7), false, 1.0)
 	# supply drops: falling ones pulse, landed unopened ones stay marked
 	for d in game.events.drops:
 		var dp: Vector3 = (d.node as Node3D).global_position
@@ -418,7 +429,12 @@ func _draw_hotbar(sz: Vector2, s: Actor) -> void:
 
 func _draw_mats(o: Vector2, s: Actor) -> void:
 	var now: float = game.match_time
-	panel(Rect2(o.x - 6, o.y - 4, 122, 92))
+	panel(Rect2(o.x - 6, o.y - 33, 122, 121))
+	# gold bars on top of the three building materials
+	var gy := o.y - 29
+	if not draw_icon("mat_gold", Rect2(o.x - 3, gy + 1, 24, 24)):
+		draw_rect(Rect2(o.x, gy + 6, 20, 12), Color(1.0, 0.8, 0.25))
+	txt(Vector2(o.x + 26, gy + 21), "%d" % s.gold, 19, Color(1.0, 0.85, 0.35))
 	for i in Structures.MATS.size():
 		var m: String = Structures.MATS[i]
 		var y := o.y + i * 29

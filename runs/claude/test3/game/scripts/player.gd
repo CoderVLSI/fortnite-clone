@@ -48,6 +48,7 @@ func setup(g: Node, actor: Actor, is_demo: bool) -> void:
 		touch.setup(game)
 	elif not demo and DisplayServer.get_name() != "headless":
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_build_talk_ui()
 	inv = preload("res://scripts/inventory_ui.gd").new()
 	var inv_layer := CanvasLayer.new()
 	inv_layer.layer = 5
@@ -61,7 +62,85 @@ func setup(g: Node, actor: Actor, is_demo: bool) -> void:
 
 
 func inv_open() -> bool:
-	return inv != null and inv.is_open
+	## The inventory or a conversation has the screen: no looking, firing or building behind it.
+	return (inv != null and inv.is_open) or talking != null
+
+
+# ----------------------------------------------------------------------------- talking to characters for hire
+
+var talking: Actor = null
+var talk_panel: PanelContainer
+var talk_name: Label
+var talk_line: Label
+var talk_hire: Button
+var talk_note: Label
+
+
+func _build_talk_ui() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 6
+	add_child(layer)
+	var root := Control.new()
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.theme = MenuUI.make_theme()
+	layer.add_child(root)
+	talk_panel = PanelContainer.new()
+	talk_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	talk_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	talk_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	talk_panel.offset_left = -330
+	talk_panel.offset_right = 330
+	talk_panel.offset_bottom = -150
+	talk_panel.visible = false
+	root.add_child(talk_panel)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 10)
+	talk_panel.add_child(v)
+	talk_name = MenuUI.label("", 26, MenuUI.ACCENT)
+	v.add_child(talk_name)
+	talk_line = MenuUI.label("", 19, MenuUI.TEXT)
+	talk_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	talk_line.custom_minimum_size = Vector2(600, 0)
+	v.add_child(talk_line)
+	talk_note = MenuUI.label("", 15, MenuUI.DIM)
+	v.add_child(talk_note)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.add_child(row)
+	talk_hire = MenuUI.button("", 22, Vector2(300, 54))
+	talk_hire.pressed.connect(func() -> void:
+		if talking and game.hire_npc(talking):
+			close_talk())
+	row.add_child(talk_hire)
+	var bye := MenuUI.button("Not now", 20, Vector2(160, 54))
+	bye.pressed.connect(close_talk)
+	row.add_child(bye)
+
+
+func open_talk(n: Actor) -> void:
+	var brain: Node = n.get_node("NpcBrain")
+	talking = n
+	talk_name.text = brain.info.name
+	talk_line.text = "\"%s\"" % brain.info.line
+	var cost: int = brain.info.cost
+	talk_hire.text = "Hire  ·  %d gold" % cost
+	talk_hire.disabled = a.gold < cost or game.hired != null or game.warming_up()
+	talk_note.text = ("You have %d gold." % a.gold) if not talk_hire.disabled else (
+			"Hiring opens once the match starts." if game.warming_up() else (
+			"You already have someone with you." if game.hired != null else "You have %d gold: not enough yet." % a.gold))
+	talk_panel.visible = true
+	if touch == null:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func close_talk() -> void:
+	talking = null
+	if talk_panel:
+		talk_panel.visible = false
+	if touch == null and not demo and DisplayServer.get_name() != "headless" and not (inv != null and inv.is_open):
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func on_player_eliminated(killer: Actor) -> void:
@@ -233,7 +312,11 @@ func _touch_input() -> void:
 			a.cycle_build_mat()
 		_build_tick(get_physics_process_delta_time(), touch.fire, false)
 	else:
-		a.in_fire = touch.fire
+		a.in_fire = touch.fire or (Settings.auto_fire and _enemy_in_sights())
+	if touch.take("auto"):
+		Settings.auto_fire = not Settings.auto_fire
+		Settings.save_file()
+		game.announce("Auto fire " + ("on" if Settings.auto_fire else "off"))
 	if touch.take("reload"):
 		a.start_reload()
 	if touch.take("drop"):
@@ -304,6 +387,16 @@ func _interaction() -> void:
 		return
 	if a.state != Actor.State.GROUND:
 		return
+	if talking != null:
+		if a.global_position.distance_to(talking.global_position) > 4.0 or _use_pressed() or Input.is_action_just_pressed("ui_cancel"):
+			close_talk()
+		return
+	var who = game.npc_near(a)
+	if who != null:
+		prompt = _key_hint() + " Talk to %s" % who.display_name
+		if _use_pressed():
+			open_talk(who)
+		return
 	if game.warming_up():                               # warm-up: zip lines yes, loot no
 		var wz = game.events.zip_near(a)
 		if wz != null:
@@ -316,6 +409,19 @@ func _interaction() -> void:
 		prompt = _key_hint() + " Open %s" % {"chest": "chest", "ammo_box": "ammo box", "supply_drop": "supply drop"}[c.kind]
 		if _use_pressed():
 			game.open_container(c, a)
+		return
+	var bench = game.events.bench_near(a)
+	if bench != null:
+		var it = a.item()
+		if it == null or Items.def(it).kind != "weapon":
+			prompt = "Hold a weapon to upgrade it here"
+		elif it.rarity >= 4:
+			prompt = "%s is already Legendary" % Items.def(it).name
+		else:
+			var cost: int = game.events.upgrade_cost(it.rarity)
+			prompt = _key_hint() + " Upgrade to %s  ·  %d gold%s" % [Items.RARITY_NAMES[it.rarity + 1], cost, "" if a.gold >= cost else "  (you have %d)" % a.gold]
+			if _use_pressed():
+				game.events.upgrade(a)
 		return
 	var zl = game.events.zip_near(a)
 	if zl != null:
@@ -366,6 +472,23 @@ func _process(delta: float) -> void:
 		want = pivot + (hit.position - pivot) * 0.92
 	cam.global_position = want
 	cam.global_transform.basis = basis
+
+
+func _enemy_in_sights() -> bool:
+	## Auto fire: a gun with ammo out and an enemy under the crosshair, within the gun's range.
+	var it = a.item()
+	if it == null or Items.def(it).kind != "weapon" or a.reloading > 0.0 or game.warming_up():
+		return false
+	var d: Dictionary = Items.def(it)
+	if it.loaded <= 0 and int(a.ammo[d.ammo]) <= 0:
+		return false
+	var from := cam.global_position
+	var dir := -cam.global_transform.basis.z
+	var res = game.ray(from + dir * 2.0, from + dir * float(d.range), a)
+	if res.is_empty() or not (res.collider is Actor):
+		return false
+	var o: Actor = res.collider
+	return o.alive() and o != game.hired and not o.is_npc
 
 
 func aim_point() -> Vector3:

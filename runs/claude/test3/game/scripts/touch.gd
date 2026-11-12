@@ -55,6 +55,7 @@ func buttons() -> Dictionary:
 		"menu": [Vector2(46 * u, 40 * u), 26.0 * u, "menu"],
 		"inv": [Vector2(112 * u, 40 * u), 26.0 * u, "inv"],
 		"emote": [Vector2(178 * u, 40 * u), 26.0 * u, "emote"],
+		"auto": [Vector2(s.x - 290 * u, 40 * u), 26.0 * u, "auto"],
 	}
 	if mode == "combat":
 		b["reload"] = [r.call(110, 335), 32.0 * u, "reload"]
@@ -178,7 +179,7 @@ func _draw() -> void:
 		var c: Vector2 = b[0]
 		var rad: float = b[1]
 		var held := button_ids.values().has(name)
-		var on: bool = held or (name == "aim" and aim) or ((name == "fire" or name == "fire_l") and fire)
+		var on: bool = held or (name == "aim" and aim) or ((name == "fire" or name == "fire_l") and fire) or (name == "auto" and Settings.auto_fire)
 		if name.begins_with("b_"):
 			on = on or game.player.build_piece == {"b_wall": "wall", "b_floor": "floor", "b_stairs": "stairs", "b_cone": "cone"}[name]
 		draw_circle(c, rad, ACTIVE if on else FILL)
@@ -266,6 +267,9 @@ func _icon(kind: String, c: Vector2, r: float, u: float) -> void:
 			draw_circle(c + Vector2(-r * 0.28, -r * 0.2), w * 0.7, ICON)
 			draw_circle(c + Vector2(r * 0.28, -r * 0.2), w * 0.7, ICON)
 			draw_arc(c + Vector2(0, r * 0.05), r * 0.38, 0.4, PI - 0.4, 14, ICON, w * 0.8, true)
+		"auto":                                     # a crosshair with an A: auto fire
+			draw_arc(c, r * 0.75, 0, TAU, 28, ICON, w * 0.8, true)
+			draw_string(font, c + Vector2(-r * 0.75, r * 0.38), "A", HORIZONTAL_ALIGNMENT_CENTER, r * 1.5, int(r * 1.15), ICON)
 		"menu":                                     # three bars
 			for k in 3:
 				_line(c + Vector2(-r * 0.6, (k - 1) * r * 0.45), c + Vector2(r * 0.6, (k - 1) * r * 0.45), w)

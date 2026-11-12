@@ -134,6 +134,7 @@ func hold(id: String) -> void:
 	if id == held_id:
 		return
 	held_id = id
+	mag = null
 	if held:
 		held.queue_free()
 		held = null
@@ -141,10 +142,39 @@ func hold(id: String) -> void:
 		return
 	held = Models.make(id)
 	holder.add_child(held)
+	for n in held.find_children("*", "MeshInstance3D", true, false):
+		if String(n.name).contains("magazine"):
+			mag = n
+			mag_rest = n.position
+			break
 	if id == "pickaxe":
 		held.position = Vector3(0, -0.15, 0)
 	elif id == "medkit" or id == "shield_potion" or id == "grenade":
 		held.position = Vector3(0, 0.0, 0.08)
+
+
+var mag: Node3D                          # the held gun's magazine part, if it has one
+var mag_rest := Vector3.ZERO
+
+
+func _animate_magazine(a: Actor, reloading: bool) -> void:
+	## The old magazine drops out, the hand is away for a moment, the new one slides in.
+	if mag == null:
+		return
+	if not reloading:
+		mag.position = mag_rest
+		mag.visible = true
+		return
+	var p := 1.0 - clampf(a.reloading / maxf(a.reload_total, 0.01), 0.0, 1.0)
+	var down := Vector3(0, -0.28, 0)
+	if p < 0.3:
+		mag.position = mag_rest + down * (p / 0.3) * (p / 0.3)          # falls away
+		mag.visible = true
+	elif p < 0.55:
+		mag.visible = false
+	else:
+		mag.visible = true
+		mag.position = mag_rest + down * 0.5 * (1.0 - clampf((p - 0.55) / 0.3, 0.0, 1.0))
 
 
 func _play(name: String, speed: float) -> void:
@@ -286,6 +316,8 @@ func animate(delta: float, a: Actor) -> void:
 			speed = clampf(hv / 1.5, 0.6, 2.4)
 		if a.using > 0.0:
 			arm_mode = "use"
+		elif armed and a.reloading > 0.0:
+			arm_mode = "reload"
 		elif armed:
 			arm_mode = "aim"
 		elif held_id == "pickaxe" and swing > 0.0:
@@ -315,6 +347,14 @@ func animate(delta: float, a: Actor) -> void:
 			d["RightLowerArm"] = (f * 1.0 - r * 0.3 + dn * 0.15).normalized()
 			d["LeftUpperArm"] = (f * 0.75 + dn * 0.6 + r * 0.25).normalized()
 			d["LeftLowerArm"] = (f * 0.85 + r * 0.55).normalized()
+			want_arms = 1.0
+		"reload":                               # gun lowered, left hand down to the magazine and back
+			var p := 1.0 - clampf(a.reloading / maxf(a.reload_total, 0.01), 0.0, 1.0)
+			var k := sin(p * PI)
+			d["RightUpperArm"] = (f * 0.25 + dn * 0.95 + r * 0.3).normalized()
+			d["RightLowerArm"] = (f * 0.9 - r * 0.35 + dn * 0.35).normalized()
+			d["LeftUpperArm"] = (f * 0.55 + dn * 0.8 + r * 0.2).normalized()
+			d["LeftLowerArm"] = (f * 0.85 + r * 0.55).normalized().slerp((dn * 0.7 + f * 0.3 + r * 0.45).normalized(), k)
 			want_arms = 1.0
 		"use":
 			d["LeftUpperArm"] = (f * 0.8 + dn * 0.55 - r * 0.15).normalized()
@@ -351,4 +391,8 @@ func animate(delta: float, a: Actor) -> void:
 			bas = bas * Basis(Vector3.RIGHT, -0.5 - sin(swing * PI) * 1.4)
 		elif not armed:
 			bas = bas * Basis(Vector3.RIGHT, -0.6)
+		elif arm_mode == "reload":
+			var rp := 1.0 - clampf(a.reloading / maxf(a.reload_total, 0.01), 0.0, 1.0)
+			bas = bas * Basis(Vector3.RIGHT, -0.55 * sin(rp * PI)) * Basis(Vector3.FORWARD, 0.35 * sin(rp * PI))
 		holder.global_transform = Transform3D(bas, hand_w)
+		_animate_magazine(a, arm_mode == "reload")

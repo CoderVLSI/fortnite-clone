@@ -332,13 +332,14 @@ func _draw_reserves(a: Actor) -> void:
 	var x := 24.0
 	txt(Vector2(x, y), "AMMO", 14, Color(0.75, 0.8, 0.86))
 	for t in Items.AMMO_TYPES:
-		_chip(Rect2(x, y + 10, 92, 62), "ammo_" + t, String(t).capitalize(), int(a.ammo[t]), Items.AMMO_COLORS[t])
-		x += 98.0
+		_chip(Rect2(x, y + 10, 84, 62), "ammo_" + t, String(t).capitalize(), int(a.ammo[t]), Items.AMMO_COLORS[t])
+		x += 89.0
 	x += 14.0
 	txt(Vector2(x, y), "MATERIALS", 14, Color(0.75, 0.8, 0.86))
 	for m in Structures.MATS:
-		_chip(Rect2(x, y + 10, 100, 62), "mat_" + m, Items.MAT_NAMES[m], int(a.mats[m]), Items.MAT_COLORS[m])
-		x += 106.0
+		_chip(Rect2(x, y + 10, 86, 62), "mat_" + m, Items.MAT_NAMES[m], int(a.mats[m]), Items.MAT_COLORS[m])
+		x += 91.0
+	_chip(Rect2(x, y + 10, 86, 62), "mat_gold", "Gold", a.gold, Color(1.0, 0.8, 0.25))
 
 
 func _bar(r: Rect2, icon_name: String, label: String, v: float, back: Color, fill: Color) -> void:

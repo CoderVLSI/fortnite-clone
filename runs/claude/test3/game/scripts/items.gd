@@ -111,4 +111,5 @@ static func roll_floor(rng: RandomNumberGenerator) -> Dictionary:
 	if r < 0.825: return make("mega_flask")
 	if r < 0.88: return make("grenade", 0, 2)
 	if r < 0.91: return make("launch_pad")
+	if r < 0.95: return {"gold": 15 + rng.randi() % 16}           # a few gold bars
 	return {"ammo": AMMO_TYPES[rng.randi() % 5]}

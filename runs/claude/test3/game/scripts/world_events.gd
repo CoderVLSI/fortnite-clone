@@ -21,6 +21,8 @@ var pads: Array = []             # {node, pos}
 var thrown: Array = []           # launch pads in flight {node, vel}
 var zips: Array = []             # {a, b, length, sag}
 var rifts: Array = []            # {node, pos}
+var benches: Array = []          # upgrade benches: {node, pos}
+const UPGRADE_COST := [100, 150, 200, 250]    # gold to go up from Common, Uncommon, Rare, Epic
 var puffs: Array = []
 var cooldown := {}               # actor instance id -> time it may trigger a pad or rift again
 var puff_mesh: SphereMesh
@@ -35,6 +37,7 @@ func setup(g: Node) -> void:
 	puff_mesh.rings = 4
 	_build_zips()
 	_build_rifts()
+	_build_benches()
 	_spawn_forage()
 
 
@@ -172,6 +175,56 @@ func _flat(c: Color) -> StandardMaterial3D:
 	m.albedo_color = c
 	m.roughness = 0.7
 	return m
+
+
+func _build_benches() -> void:
+	## An upgrade bench in every town: hold a weapon, pay gold, and it goes up a rarity.
+	var T = game.terrain
+	for p in [T.village + Vector2(9, 7), T.yard + Vector2(-8, 12), T.farm + Vector2(10, -6), T.snow_town + Vector2(7, 4),
+			T.desert_town + Vector2(-7, 5), T.depot + Vector2(0, 16), T.west_hamlet + Vector2(6, -5), T.east_cove + Vector2(-6, 6)]:
+		var spot := _dry_spot(p)
+		var n := Models.make("bench")
+		add_child(n)
+		n.global_position = spot
+		n.rotation.y = atan2(p.x - spot.x, p.y - spot.z) + game.rng.randf_range(-0.3, 0.3)
+		var body := StaticBody3D.new()
+		var cs := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(1.8, 1.0, 0.8)
+		cs.shape = box
+		cs.position = Vector3(0, 0.5, 0)
+		body.add_child(cs)
+		n.add_child(body)
+		benches.append({"node": n, "pos": spot})
+
+
+func bench_near(a: Actor) -> Variant:
+	for b in benches:
+		if a.global_position.distance_to(b.pos) < 2.6:
+			return b
+	return null
+
+
+func upgrade_cost(rarity: int) -> int:
+	return UPGRADE_COST[clampi(rarity, 0, UPGRADE_COST.size() - 1)]
+
+
+func upgrade(a: Actor) -> bool:
+	## The held weapon goes up one rarity for gold.
+	var it = a.item()
+	if it == null or Items.def(it).kind != "weapon" or it.rarity >= 4:
+		return false
+	var cost := upgrade_cost(it.rarity)
+	if a.gold < cost:
+		return false
+	a.gold -= cost
+	it.rarity += 1
+	game.sfx("chest_open", a.global_position)
+	if a.is_player and game.hud:
+		game.hud.add_pickup_note(it)
+		game.announce("Upgraded to %s" % Items.label(it))
+	game.stats["upgrades"] = game.stats.get("upgrades", 0) + 1
+	return true
 
 
 func _build_rifts() -> void:

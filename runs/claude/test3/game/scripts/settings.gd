@@ -43,6 +43,7 @@ var fps_limit := 0
 var volume := 1.0
 var music_volume := 0.6
 var show_fps := false
+var auto_fire := true                    # touch screens: fire by itself while the crosshair is on an enemy
 var outfit := 0                          # index into OUTFITS, picked in the lobby's locker
 var career := {"matches": 0, "wins": 0, "kills": 0, "top10": 0, "best": 0, "xp": 0}
 var skip_warmup := false                 # not saved: the front-end test sets it to go straight to the blimp
@@ -104,6 +105,7 @@ func load_file() -> void:
 	volume = clampf(float(cf.get_value("audio", "volume", 1.0)), 0.0, 1.0)
 	music_volume = clampf(float(cf.get_value("audio", "music_volume", 0.6)), 0.0, 1.0)
 	show_fps = bool(cf.get_value("graphics", "show_fps", false))
+	auto_fire = bool(cf.get_value("controls", "auto_fire", true))
 	outfit = clampi(int(cf.get_value("player", "outfit", 0)), 0, OUTFITS.size() - 1)
 	var c = cf.get_value("player", "career", {})
 	if c is Dictionary:
@@ -130,6 +132,7 @@ func save_file() -> void:
 	cf.set_value("audio", "volume", volume)
 	cf.set_value("audio", "music_volume", music_volume)
 	cf.set_value("graphics", "show_fps", show_fps)
+	cf.set_value("controls", "auto_fire", auto_fire)
 	cf.set_value("player", "outfit", outfit)
 	cf.set_value("player", "career", career)
 	if _cli_difficulty != "" and bot_difficulty == _cli_difficulty:

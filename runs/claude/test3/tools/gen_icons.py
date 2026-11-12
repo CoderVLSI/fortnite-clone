@@ -37,6 +37,7 @@ ICONS = {
     "mat_wood": (None, "a neat stack of three orange-brown wooden planks"),
     "mat_brick": (None, "a small stack of red bricks"),
     "mat_metal": (None, "a stack of two grey-blue corrugated metal sheets with rivets"),
+    "mat_gold": (None, "a small stack of three shiny gold bars, two side by side with one across the top"),
     "build_wall": (None, "a single square wooden building wall panel with a frame and rivets, front view"),
     "build_floor": (None, "a single square wooden floor tile seen from above at an angle"),
     "build_stairs": (None, "a single wooden ramp, seen from the side, rising to the right"),

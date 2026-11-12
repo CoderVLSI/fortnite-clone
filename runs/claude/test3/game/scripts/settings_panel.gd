@@ -116,6 +116,7 @@ func _build_controls() -> void:
 	var sv := _slider(0.2, 3.0, 0.05, Settings.sensitivity, "%.2fx", func(x: float) -> void: Settings.sensitivity = x)
 	_row(p, "Mouse sensitivity", sv[0], sv[1])
 	_row(p, "Invert Y axis", _check("", Settings.invert_y, func(on: bool) -> void: Settings.invert_y = on))
+	_row(p, "Auto fire (touch screens)", _check("", Settings.auto_fire, func(on: bool) -> void: Settings.auto_fire = on))
 	var note := MenuUI.label("Sensitivity applies to mouse look; touch look scales with it too.", 16, MenuUI.DIM)
 	p.add_child(note)
 

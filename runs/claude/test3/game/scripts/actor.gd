@@ -35,8 +35,11 @@ var ammo := {"light": 0, "medium": 0, "heavy": 0, "shells": 0, "rockets": 0}
 var body: Character
 var spread_mul := 1.0                    # bots: aim error on top of the weapon spread
 var placement := 0
+var is_npc := false                     # a character for hire, not a player
+var hired := false
 var ever_armed := false
 var mats := {"wood": 0, "brick": 0, "metal": 0}
+var gold := 0                            # gold bars: spent at upgrade benches and on hiring characters
 var build_piece := ""                    # "" = not building, else wall / floor / stairs / cone
 var build_mat := "wood"
 var build_cd := 0.0
@@ -646,7 +649,7 @@ func free_slot() -> int:
 
 func wants(it: Dictionary) -> bool:
 	## Would walking over this pick it up?
-	if it.has("ammo"):
+	if it.has("ammo") or it.has("gold"):
 		return true
 	if it.has("mat"):
 		return int(mats[it.mat]) < Structures.MAX_MATS
@@ -666,6 +669,9 @@ func add_item(it: Dictionary) -> bool:
 		return true
 	if it.has("mat"):
 		mats[it.mat] = mini(int(mats[it.mat]) + int(it.count), Structures.MAX_MATS)
+		return true
+	if it.has("gold"):
+		gold += int(it.gold)
 		return true
 	if it.has("forage"):                               # eaten on the spot
 		if it.forage == "apple":
@@ -829,6 +835,7 @@ func start_reload() -> void:
 		return
 	burst_left = 0
 	reloading = Items.reload_time(it)
+	reload_total = reloading
 	game.sfx({"shotgun": "reload_pump", "sniper_rifle": "reload_heavy", "rocket_launcher": "reload_heavy"}.get(it.id, "reload"), global_position)
 
 
@@ -893,6 +900,7 @@ func _swing_pickaxe() -> void:
 		game.structures.pickaxe_hit(self, hitp)
 
 
+var reload_total := 1.0                  # how long the current reload takes (for the animation)
 const FIRST_SHOT_REST := 0.45             # seconds without firing before the next shot is a perfect first shot
 var last_shot_t := -99.0
 
@@ -974,6 +982,10 @@ func _throw(it: Dictionary, d: Dictionary) -> void:
 func hit(amount: float, attacker: Actor, bypass_shield: bool, from: Vector3) -> void:
 	if state == State.DEAD or state == State.BLIMP or amount <= 0.0 or game.warming_up():
 		return
+	if is_npc and (not hired or attacker == game.player):
+		return                                         # nobody hurts them before they are hired, and no friendly fire
+	if is_player and attacker != null and attacker == game.hired:
+		return
 	stop_emote()
 	if attacker != null and attacker != self:
 		last_attacker = attacker
@@ -1014,6 +1026,9 @@ func die(killer: Actor) -> void:
 			game.spawn_pickup({"mat": m, "count": mats[m]}, p + Vector3(cos(n * 1.3), 0, sin(n * 1.3)) * 2.2)
 			mats[m] = 0
 			n += 1
+	if gold > 0:                                       # and their gold
+		game.spawn_pickup({"gold": gold}, p + Vector3(cos(n * 1.3), 0, sin(n * 1.3)) * 2.2)
+		gold = 0
 	build_piece = ""
 	for t in Items.AMMO_TYPES:
 		if ammo[t] > 0:

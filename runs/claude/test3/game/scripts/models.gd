@@ -13,7 +13,7 @@ static func make(id: String) -> Node3D:
 			var wrap := Node3D.new()
 			wrap.add_child(sp)
 			return wrap
-		"healing_drink", "launch_pad", "apple", "mushroom", "bandages", "hydro_juice", "mega_flask":
+		"healing_drink", "launch_pad", "apple", "mushroom", "bandages", "hydro_juice", "mega_flask", "gold_bars", "bench":
 			return _procedural(id)
 		"smg", "tactical_shotgun", "burst_rifle", "hunting_rifle":
 			if not ResourceLoader.exists("res://assets/%s.glb" % id):
@@ -93,6 +93,45 @@ static func _procedural(id: String) -> Node3D:
 	## Small items that have no stage 1 model: built here from primitives in the same style.
 	var n := Node3D.new()
 	match id:
+		"gold_bars":                                 # three ingots, two below and one across the top
+			var bar := PrismMesh.new()
+			bar.left_to_right = 0.5
+			bar.size = Vector3(0.2, 0.07, 0.09)
+			var gold := Color(1.0, 0.78, 0.2)
+			for k in 2:
+				var b := _part(n, bar, gold, Vector3(-0.055 + k * 0.11, 0.035, 0), 0.35)
+				b.scale = Vector3(1, 1, 1)
+			var top := _part(n, bar, gold.lightened(0.15), Vector3(0, 0.105, 0), 0.45)
+			top.rotation.y = PI / 2
+		"bench":                                     # an upgrade bench: a workbench with a vise and a glowing strip
+			var wood := Color(0.55, 0.36, 0.2)
+			var top_m := BoxMesh.new()
+			top_m.size = Vector3(1.8, 0.12, 0.8)
+			_part(n, top_m, wood, Vector3(0, 0.95, 0))
+			var leg := BoxMesh.new()
+			leg.size = Vector3(0.12, 0.9, 0.12)
+			for lx in [-0.8, 0.8]:
+				for lz in [-0.32, 0.32]:
+					_part(n, leg, wood.darkened(0.2), Vector3(lx, 0.45, lz))
+			var shelf := BoxMesh.new()
+			shelf.size = Vector3(1.6, 0.06, 0.6)
+			_part(n, shelf, wood.darkened(0.1), Vector3(0, 0.3, 0))
+			var steel := Color(0.45, 0.48, 0.55)
+			var vise := BoxMesh.new()
+			vise.size = Vector3(0.3, 0.22, 0.28)
+			_part(n, vise, steel, Vector3(0.55, 1.12, 0))
+			var jaw := BoxMesh.new()
+			jaw.size = Vector3(0.06, 0.16, 0.3)
+			_part(n, jaw, steel.darkened(0.3), Vector3(0.35, 1.16, 0))
+			var strip := BoxMesh.new()
+			strip.size = Vector3(1.82, 0.04, 0.05)
+			_part(n, strip, Color(1.0, 0.75, 0.2), Vector3(0, 0.9, 0.41), 2.5)
+			var sign_m := BoxMesh.new()
+			sign_m.size = Vector3(0.7, 0.35, 0.04)
+			_part(n, sign_m, Color(0.12, 0.13, 0.16), Vector3(-0.35, 1.45, -0.32))
+			var arrow := PrismMesh.new()
+			arrow.size = Vector3(0.22, 0.2, 0.03)
+			_part(n, arrow, Color(1.0, 0.8, 0.25), Vector3(-0.35, 1.46, -0.29), 2.0)
 		"healing_drink":
 			_part(n, _cyl(0.055, 0.17), Color(0.75, 0.9, 1.0, 0.35), Vector3(0, 0.085, 0))
 			_part(n, _cyl(0.048, 0.13), Color(0.25, 0.85, 0.3), Vector3(0, 0.07, 0), 0.8)

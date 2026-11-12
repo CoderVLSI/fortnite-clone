@@ -195,9 +195,10 @@ func _setup_doors() -> void:
 
 
 func _update_doors() -> void:
+	var who: Array = actors if hired == null else actors + [hired]
 	for d in doors:
 		var near := false
-		for a in actors:
+		for a in who:
 			if a.alive() and a.state == Actor.State.GROUND and a.global_position.distance_squared_to(d.pos) < 9.0:
 				near = true
 				break
@@ -340,6 +341,70 @@ func _add_glow(n: Node3D, c: Color, r: float) -> void:
 	n.add_child(mi)
 
 
+var npcs: Array = []                      # characters for hire (not players: no placement, not in actors)
+var hired: Actor = null                   # the one working for the player
+## [name, where (offset from a point of interest), body, outfit, accent, what they say, cost in gold]
+const NPCS := [
+	["Marlo", "village", Vector2(-14, 14), "Soldier", Color(0.35, 0.55, 0.3), Color(0.25, 0.18, 0.1), "Ten years I've guarded this village. For %d gold I'll guard you instead.", 200],
+	["Frost", "snow_town", Vector2(-8, 9), "Soldier", Color(0.9, 0.93, 1.0), Color(0.3, 0.45, 0.7), "Cold up here, isn't it? Pay me and I'll keep the others colder.", 200],
+	["Dusty", "desert_town", Vector2(9, -7), "Soldier", Color(0.85, 0.7, 0.45), Color(0.45, 0.25, 0.15), "Sand in my boots, aim in my eye. %d gold and I ride with you.", 180],
+	["B0LT", "depot", Vector2(-12, 6), "Xbot", Color(0.95, 0.85, 0.2), Color(0.15, 0.15, 0.18), "UNIT B0LT ONLINE. COMBAT ESCORT AVAILABLE. FEE: %d GOLD.", 250],
+	["Haywire", "farm", Vector2(-10, 12), "Xbot", Color(0.35, 0.75, 0.35), Color(0.85, 0.6, 0.2), "Beep. The crows are gone. I'm bored. Hire me for %d?", 220],
+	["Captain Shore", "east_cove", Vector2(7, -9), "Soldier", Color(0.25, 0.45, 0.8), Color(0.9, 0.85, 0.7), "Ahoy. My boat sank, my aim didn't. %d gold.", 200],
+]
+
+
+func _setup_npcs() -> void:
+	for d in NPCS:
+		var c: Vector2 = terrain.get(d[1])
+		var spot: Vector3 = events._dry_spot(c + d[2])
+		var n := Actor.new()
+		add_child(n)
+		n.setup(self, d[0], false, d[4], d[5], d[3])
+		n.is_npc = true
+		n.state = Actor.State.GROUND
+		n.global_position = spot + Vector3(0, 0.3, 0)
+		var brain := preload("res://scripts/npc.gd").new()
+		brain.name = "NpcBrain"
+		n.add_child(brain)
+		var line: String = d[6]
+		brain.setup(self, n, {"name": d[0], "line": line % d[7] if line.contains("%d") else line, "cost": d[7]})
+		npcs.append(n)
+
+
+func npc_near(a: Actor) -> Variant:
+	for n in npcs:
+		if not n.hired and n.alive() and a.global_position.distance_to(n.global_position) < 3.0:
+			return n
+	return null
+
+
+func hire_npc(n: Actor) -> bool:
+	## The player pays and the character joins them: a gun, ammo, a shield and a bot brain that fights on their side.
+	var brain: Node = n.get_node("NpcBrain")
+	var cost: int = brain.info.cost
+	if hired != null or warming_up() or player.gold < cost or not n.alive():
+		return false
+	player.gold -= cost
+	brain.plate.text = "%s
+your ally" % brain.info.name
+	brain.plate.modulate = Color(0.45, 1.0, 0.5)
+	brain.set_physics_process(false)
+	n.hired = true
+	hired = n
+	n.add_item(Items.make("assault_rifle", 2))
+	n.ammo["medium"] = 150
+	n.shield = 50.0
+	var bot := preload("res://scripts/bot.gd").new()
+	n.add_child(bot)
+	bot.setup(self, n, 0.75)
+	bot.ally_of = player
+	bot.mode = "follow"
+	announce("%s joins you!" % brain.info.name)
+	sfx("chest_open", n.global_position)
+	return true
+
+
 func _setup_actors() -> void:
 	var colors := [Color(0.85, 0.3, 0.25), Color(0.25, 0.55, 0.85), Color(0.3, 0.7, 0.4), Color(0.85, 0.65, 0.2), Color(0.6, 0.35, 0.8),
 			Color(0.2, 0.7, 0.7), Color(0.85, 0.45, 0.65), Color(0.45, 0.5, 0.55)]
@@ -368,6 +433,7 @@ func _setup_actors() -> void:
 	controller = preload("res://scripts/player.gd").new()
 	add_child(controller)
 	controller.setup(self, player, demo)
+	_setup_npcs()
 
 
 # ----------------------------------------------------------------------------- frame
@@ -607,6 +673,11 @@ func _record_career() -> void:
 
 
 func on_eliminated(victim: Actor, killer: Actor) -> void:
+	if victim.is_npc:                                    # a hired character is not a player: no placement
+		if hired == victim:
+			hired = null
+		kill_feed.append({"text": "%s has fallen" % victim.display_name, "time": match_time, "mine": true})
+		return
 	victim.placement = alive_count() + 1
 	if victim == player:
 		player_survived = match_time
@@ -651,7 +722,10 @@ func spawn_pickup(it: Dictionary, pos: Vector3) -> void:
 		n.position.y -= 0.42
 		pickups.append({"node": n, "model": model, "item": it, "pos": n.position, "born": match_time, "still": true})
 		return
-	if it.has("ammo") or it.has("mat"):
+	if it.has("gold"):
+		color = Color(1.0, 0.8, 0.25)
+		model = Models.make("gold_bars")
+	elif it.has("ammo") or it.has("mat"):
 		color = Items.AMMO_COLORS[it.ammo] if it.has("ammo") else Items.MAT_COLORS[it.mat]
 		model = Node3D.new()
 		var mi := MeshInstance3D.new()
@@ -778,10 +852,11 @@ func open_container(c: Dictionary, _by: Actor) -> void:
 			drops = [w, {"ammo": Items.def(w).ammo}, {"ammo": Items.AMMO_TYPES[rng.randi() % 5]}]
 			if rng.randf() < 0.7:
 				drops.append(Items.roll_heal(rng, true))
+			drops.append({"gold": 20 + rng.randi() % 26})
 		"ammo_box":
 			drops = [{"ammo": Items.AMMO_TYPES[rng.randi() % 4]}, {"ammo": Items.AMMO_TYPES[rng.randi() % 5]}]
 		"supply_drop":
-			drops = [Items.roll_weapon(rng, 0.45), Items.roll_weapon(rng, 0.45), Items.make("shield_potion", 0, 2), Items.make("mega_flask") if rng.randf() < 0.3 else Items.make("medkit"), {"ammo": "rockets"}, {"ammo": "medium"}]
+			drops = [Items.roll_weapon(rng, 0.45), Items.roll_weapon(rng, 0.45), Items.make("shield_potion", 0, 2), Items.make("mega_flask") if rng.randf() < 0.3 else Items.make("medkit"), {"gold": 120}, {"ammo": "rockets"}, {"ammo": "medium"}]
 	for i in drops.size():
 		var a := TAU * i / drops.size() + rng.randf() * 0.5
 		spawn_pickup(drops[i], p + Vector3(cos(a), 0, sin(a)) * 1.5)

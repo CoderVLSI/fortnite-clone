@@ -58,6 +58,7 @@ var junk: Array = []                    # items this bot threw away, never to be
 var build_next := 0.0                   # earliest time for the next piece
 var cover_until := 0.0                  # sheltering behind a wall it just built
 var harvest_e = null                    # the tree or rock it is gathering from
+var ally_of: Actor = null               # a hired character: fights for this player and follows them
 var harvest_search := 0.0               # next time it may look for one (the search walks every tree and rock)
 
 
@@ -183,8 +184,11 @@ func _perceive() -> void:
 	if (mode == "loot" or mode == "harvest") and game.match_time - a.last_hit_time > 4.0:
 		bd *= 0.5                                      # heads down, looting
 	var fwd := Vector3(-sin(a.aim_yaw), 0, -cos(a.aim_yaw))
-	for o in game.actors:
-		if o == a or not o.alive() or o.state == Actor.State.BLIMP or o.state == Actor.State.SKYDIVE:
+	var pool: Array = game.actors
+	if ally_of == null and game.hired != null and game.hired.alive():
+		pool = game.actors + [game.hired]                      # a hired character is fair game
+	for o in pool:
+		if o == a or o == ally_of or not o.alive() or o.state == Actor.State.BLIMP or o.state == Actor.State.SKYDIVE:
 			continue
 		var to: Vector3 = o.global_position - a.global_position
 		var d := to.length()
@@ -346,6 +350,10 @@ func _decide() -> void:
 	if a.using > 0.0:
 		mode = "heal"
 		return
+	# hired: stay with the player instead of looting or hunting
+	if ally_of != null:
+		_follow_owner(pos)
+		return
 	# 4. loot: anything useful close by; until armed, or when the guns run low, go looking for it
 	var low := _ammo_low()
 	var reach := 16.0
@@ -369,6 +377,26 @@ func _decide() -> void:
 		goal_container = c
 		_set_goal(c.pos)
 		return
+	# 4b. spare gold and a bench in reach: upgrade the best gun
+	if armed and not s.shrinking:
+		var bi := a.best_weapon_slot(25.0)
+		if bi >= 0 and int(a.slots[bi].rarity) < 4 and a.gold >= game.events.upgrade_cost(int(a.slots[bi].rarity)):
+			var bench = null
+			var bd := 60.0
+			for bn in game.events.benches:
+				var dd := pos.distance_to(bn.pos)
+				if dd < bd and not _avoided(bn.pos):
+					bd = dd
+					bench = bn
+			if bench != null:
+				mode = "upgrade"
+				if bd < 2.4:
+					a.select(bi)
+					game.events.upgrade(a)
+					has_goal = false
+				else:
+					_set_goal(bench.pos)
+				return
 	# 5. short of materials and nothing more pressing: gather some
 	if armed and _mats_total() < int(L.mats) and not s.shrinking and (mode == "harvest" or game.rng.randf() < 0.6):
 		var h = _harvest_target()
@@ -837,8 +865,28 @@ func _debug_loot() -> void:
 	print("LOOTDBG %.0f %s inv=%s %s ok_kinds=%s" % [game.match_time, a.display_name, inv, r, kinds])
 
 
+func _follow_owner(pos: Vector3) -> void:
+	## Keep close to the player who hired us; catch up at once if left far behind (they glided off, say).
+	mode = "follow"
+	if not ally_of.alive() or ally_of.state != Actor.State.GROUND:
+		has_goal = false
+		return
+	var d := pos.distance_to(ally_of.global_position)
+	if d > 90.0:
+		var back := ally_of.global_position + Vector3(-sin(ally_of.aim_yaw), 0, -cos(ally_of.aim_yaw)) * -3.0
+		a.global_position = Vector3(back.x, game.terrain.height(back.x, back.z) + 0.5, back.z)
+		a.velocity = Vector3.ZERO
+		has_goal = false
+	elif d > 6.0:
+		_set_goal(ally_of.global_position)
+	else:
+		has_goal = false
+
+
 func _engages(o: Actor) -> bool:
 	## Early on bots loot first: they only start fights close by, or with someone already shooting them.
+	if ally_of != null:
+		return true
 	if o == a.last_attacker and game.match_time - a.last_hit_time < 6.0:
 		return true
 	# the range opens up as the storm closes in: early range while it waits, then wider each phase

@@ -471,6 +471,49 @@ func _ready() -> void:
 	check("a destroyed house takes its trim and roof with it", not (shell.node as Node3D).visible and not trim.visible)
 	check("loot from the upper floor falls to the ground", loot.pos.y < up_spot.y - 2.0, "%.1f -> %.1f" % [up_spot.y, loot.pos.y])
 	check("house walls give wood when farmed", S.LEVEL.has("house_shell") and S.LEVEL["house_shell"][1] == "wood")
+	# ---------------------------------------------------------------- gold, upgrade benches, hiring, reload animation
+	await put(game.events._dry_spot(game.terrain.village + Vector2(26, 30)) + Vector3(0, 0.1, 0))
+	a.gold = 0
+	a.add_item({"gold": 40})
+	check("gold bars add to the gold count", a.gold == 40)
+	for i in Items.SLOTS:
+		a.slots[i] = null
+	a.active = -1
+	a.add_item(Items.make("smg", 0))
+	a.select(a.find_item("smg"))
+	var bench: Dictionary = game.events.benches[0]
+	await put(bench.pos + Vector3(1.6, 0.2, 0))
+	check("standing at an upgrade bench is noticed", game.events.bench_near(a) != null)
+	check("not enough gold: no upgrade", not game.events.upgrade(a) and a.item().rarity == 0)
+	a.gold = 300
+	check("the bench upgrades the held weapon for gold", game.events.upgrade(a) and a.item().rarity == 1 and a.gold == 200, "rarity %d gold %d" % [a.item().rarity, a.gold])
+	# reload animation: the magazine drops out half way
+	a.ammo["light"] = 60
+	a.item().loaded = 0
+	a.start_reload()
+	var smg_body: Character = a.body
+	await frames(int(a.reload_total * 60.0 * 0.45))
+	check("reloading drops the magazine out", smg_body.mag != null and not smg_body.mag.visible, "mag %s" % [smg_body.mag != null])
+	await frames(int(a.reload_total * 60.0 * 0.7))
+	check("and it is back when the reload is done", smg_body.mag != null and smg_body.mag.visible and a.item().loaded > 0)
+	# hiring a character
+	var npc: Actor = game.npcs[0]
+	await put(npc.global_position + Vector3(1.8, 0.2, 0))
+	check("a character for hire can be talked to", game.npc_near(a) == npc)
+	var before_alive: int = game.alive_count()
+	npc.hit(80.0, game.actors[1], false, Vector3.ZERO)
+	check("nobody hurts a character before they are hired", npc.hp == 100.0)
+	a.gold = 500
+	var cost: int = npc.get_node("NpcBrain").info.cost
+	check("hiring takes the gold and the character joins you", game.hire_npc(npc) and game.hired == npc and a.gold == 500 - cost and npc.has_weapon())
+	var hp_me: float = a.hp
+	var hp_npc: float = npc.hp
+	a.hit(30.0, npc, false, Vector3.ZERO)
+	npc.hit(30.0, a, false, Vector3.ZERO)
+	check("no friendly fire between you and your hire", a.hp == hp_me and npc.hp == hp_npc, "%.0f / %.0f" % [a.hp, npc.hp])
+	npc.die(game.actors[1])
+	await frames(2)
+	check("a fallen hire is not a player: the count stays", game.hired == null and game.alive_count() == before_alive)
 	print("EVENTTEST\n" + "\n".join(lines))
 	print("EVENTTEST %s  (%d checks, %d failed)" % ["OK" if fails == 0 else "FAILED", lines.size(), fails])
 	get_tree().quit()
