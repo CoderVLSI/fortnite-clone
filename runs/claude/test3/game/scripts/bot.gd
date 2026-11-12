@@ -69,12 +69,14 @@ func setup(g: Node, actor: Actor, s: float) -> void:
 	think = game.rng.randf() * 0.25
 	# landing spot: a point of interest, or anywhere on land
 	var T = game.terrain
-	var pois: Array = [T.village, T.yard, T.farm, T.towers[0], T.towers[1], T.towers[2], T.lake + Vector2(30, 20)]
+	var pois: Array = [T.village, T.yard, T.farm, T.towers[0], T.towers[1], T.towers[2], T.lake + Vector2(30, 20),
+			T.snow_town, T.desert_town, T.depot, T.west_hamlet, T.east_cove]
+	pois.append_array(T.extra_towers)
 	var p: Vector2
 	if game.rng.randf() < 0.55:
 		p = pois[game.rng.randi() % pois.size()] + Vector2(game.rng.randf_range(-45, 45), game.rng.randf_range(-45, 45))
 	else:
-		p = Vector2(game.rng.randf_range(-160, 160), game.rng.randf_range(-160, 160))
+		p = Vector2(game.rng.randf_range(-340, 340), game.rng.randf_range(-340, 340))
 	# never aim for water, a steep bank or the inside of a building
 	for i in 20:
 		if game.nav.dry(Vector3(p.x, 0, p.y)):

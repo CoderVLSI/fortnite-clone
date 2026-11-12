@@ -1,7 +1,7 @@
 ## Heads-up display, drawn with immediate-mode calls on one full-screen Control.
 extends Control
 
-const MAP_METRES := 460.0                 # the minimap texture covers 460 x 460 m centred on the island
+const MAP_METRES := 900.0                 # the minimap texture covers 900 x 900 m centred on the island (build_island.gd)
 const STORM_COL := Color(0.62, 0.3, 0.95)
 
 var game: Node
@@ -245,7 +245,7 @@ func _draw_minimap(sz: Vector2, s: Actor) -> void:
 	var extent := 230.0
 	var origin := Vector2(sz.x - extent - 22, 22)
 	var centre := Vector2(s.global_position.x, s.global_position.z)
-	var span := 190.0
+	var span := 240.0
 	centre = centre.clamp(Vector2(-MAP_METRES / 2 + span / 2, -MAP_METRES / 2 + span / 2), Vector2(MAP_METRES / 2 - span / 2, MAP_METRES / 2 - span / 2))
 	draw_rect(Rect2(origin - Vector2(3, 3), Vector2(extent + 6, extent + 6)), Color(0.05, 0.07, 0.1, 0.8))
 	_draw_map(origin, extent, centre, span, s, false)
@@ -279,8 +279,8 @@ func _draw_full_map(sz: Vector2, s: Actor) -> void:
 	draw_rect(Rect2(Vector2.ZERO, sz), Color(0, 0, 0, 0.45))
 	draw_rect(Rect2(origin - Vector2(6, 6), Vector2(extent + 12, extent + 12)), Color(0.05, 0.07, 0.1, 0.9))
 	_draw_map(origin, extent, Vector2.ZERO, MAP_METRES, s, true)
-	for i in 7:                                           # 6 x 6 grid like the reference map
-		var o := extent * (0.5 + (i - 3) * (400.0 / 6.0) / MAP_METRES)
+	for i in 11:                                          # a 100 m grid
+		var o := extent * (0.5 + (i - 5) * 100.0 / MAP_METRES)
 		draw_line(origin + Vector2(o, 0), origin + Vector2(o, extent), Color(1, 1, 1, 0.18), 1.0)
 		draw_line(origin + Vector2(0, o), origin + Vector2(extent, o), Color(1, 1, 1, 0.18), 1.0)
 	txt(Vector2(0, origin.y - 14), "ISLAND MAP   [M] close", 20, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, sz.x)

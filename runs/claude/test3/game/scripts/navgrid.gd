@@ -2,8 +2,8 @@
 class_name NavGrid
 extends RefCounted
 
-const HALF := 215
-const CELL := 0.5
+const HALF := 430
+const CELL := 1.0
 const N := 860
 const SWIM_COST := 6.0              # swimming is slow: only when the way round is much longer
 const WALL_COST := 4.0              # cells beside a wall cost this much more, so paths keep to the middle of a room or doorway

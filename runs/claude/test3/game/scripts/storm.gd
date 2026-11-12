@@ -4,8 +4,8 @@ class_name Storm
 extends Node3D
 
 ## [wait seconds, shrink seconds, radius after the shrink, damage per second]
-const PHASES := [[45.0, 35.0, 125.0, 1.0], [30.0, 30.0, 75.0, 2.0], [25.0, 25.0, 40.0, 5.0], [20.0, 20.0, 18.0, 8.0], [15.0, 20.0, 0.0, 10.0]]
-const START_RADIUS := 300.0
+const PHASES := [[60.0, 50.0, 250.0, 1.0], [45.0, 40.0, 150.0, 2.0], [35.0, 35.0, 80.0, 5.0], [25.0, 25.0, 36.0, 8.0], [20.0, 25.0, 0.0, 10.0]]
+const START_RADIUS := 620.0                # covers the corners of the 800 m island
 
 var game: Node
 var phase := 0

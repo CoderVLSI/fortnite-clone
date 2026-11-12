@@ -5,9 +5,9 @@ extends Node3D
 const Terrain := preload("res://scripts/terrain.gd")
 const BOT_COUNT := 24
 const BLIMP_HEIGHT := 150.0
-const BLIMP_SPEED := 15.0                # 600 m in 40 s
-const BLIMP_TIME := 40.0
-const LOOT_SPOTS := 118
+const BLIMP_SPEED := 20.0                # 1000 m in 50 s: right across the big island
+const BLIMP_TIME := 50.0
+const LOOT_SPOTS := 260
 const BOT_NAMES := ["Mako", "Juniper", "Flint", "Sable", "Quill", "Tansy", "Rook", "Indigo", "Bramble", "Pike", "Wren", "Cobalt",
 		"Marlow", "Saffron", "Onyx", "Fennel", "Harbor", "Lark", "Dune", "Ember", "Sorrel", "Vesper", "Gale", "Thistle"]
 
@@ -203,7 +203,7 @@ func _setup_blimp() -> void:
 		old.queue_free()
 	var a := rng.randf() * TAU
 	blimp_dir = Vector3(cos(a), 0, sin(a))
-	var mid := Vector3(rng.randf_range(-40, 40), BLIMP_HEIGHT, rng.randf_range(-40, 40))
+	var mid := Vector3(rng.randf_range(-90, 90), BLIMP_HEIGHT, rng.randf_range(-90, 90))
 	blimp_from = mid - blimp_dir * (BLIMP_SPEED * BLIMP_TIME * 0.5)
 	blimp = Models.make("drop_vehicle")
 	blimp.rotation.y = atan2(blimp_dir.x, blimp_dir.z) + PI          # the nose (asset +Z... model nose is -Y in Blender = +Z here) leads
@@ -249,7 +249,7 @@ func _setup_loot() -> void:
 	var tries := 0
 	while spots.size() < want and tries < 5000:
 		tries += 1
-		var p := Vector2(rng.randf_range(-190, 190), rng.randf_range(-190, 190))
+		var p := Vector2(rng.randf_range(-370, 370), rng.randf_range(-370, 370))
 		var h2 := terrain.height(p.x, p.y)
 		if h2 < 1.6 or terrain.is_water(p.x, p.y):
 			continue

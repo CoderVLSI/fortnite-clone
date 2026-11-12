@@ -1,14 +1,14 @@
 ## Bakes the walkability grid the bots path-find on and saves res://textures/navgrid.png.
-## Two pixels per metre over the island: white = walkable, light grey = walkable next to a wall, dark grey = swimmable
+## One cell per metre over the island: white = walkable, light grey = walkable next to a wall, dark grey = swimmable
 ## river or lake water, black = blocked. A cell is walkable when it is dry, not too steep and a
 ## player-sized capsule standing on it touches nothing but the ground. Bridge decks over water count as walkable.
 ##   godot --headless --path <project> -s scripts/bake_nav.gd
 extends SceneTree
 
 const Terrain := preload("res://scripts/terrain.gd")
-const HALF := 215
+const HALF := 430
 const SWIM := Color(0.33, 0.33, 0.33)    # river and lake water: path-finding swims it when it has to
-const CELL := 0.5                        # fine enough that a thin wall always blocks at least one cell
+const CELL := 1.0                        # 860 x 860 cells over the big island; the ray check below catches thin walls
 var island: Node3D
 var ticks := 0
 
@@ -33,7 +33,7 @@ func _physics_process(_d: float) -> bool:
 	var space := island.get_world_3d().direct_space_state
 	var terrain_body: StaticBody3D = island.get_node("Terrain/TerrainBody")
 	var cap := CapsuleShape3D.new()
-	cap.radius = 0.36                     # just over half a cell's diagonal, so a thin wall at an angle can never slip between two samples
+	cap.radius = 0.32
 	cap.height = 1.3
 	var q := PhysicsShapeQueryParameters3D.new()
 	q.shape = cap
@@ -157,7 +157,7 @@ func _physics_process(_d: float) -> bool:
 				if comp[m] == 0 and img.get_pixel(x2, y2).r >= 0.3:
 					comp[m] = 1
 					members.append(m)
-		if members.size() < 40:
+		if members.size() < 3000:                         # pockets, and mesa tops only a builder can reach
 			for m in members:
 				img.set_pixel(m % n, m / n, Color.BLACK)
 			filled += members.size()

@@ -35,6 +35,7 @@ const LEVEL := {
 	"house_door": [120.0, "wood", 5], "house_roof": [600.0, "wood", 8], "house_porch": [300.0, "wood", 6],
 	"house_chimney": [400.0, "brick", 7], "house_furniture": [100.0, "wood", 5],
 	"tower_frame": [700.0, "wood", 8], "tower_roof": [250.0, "wood", 6], "tower_ladder": [150.0, "wood", 4],
+	"cactus": [160.0, "wood", 5],
 }
 ## Breaking the first part also brings these sibling parts down.
 const COLLAPSE := {"tower_frame": ["tower_roof", "tower_ladder"]}
@@ -111,6 +112,9 @@ func setup(g: Node) -> void:
 func _level_spec(obj: String) -> Variant:
 	if LEVEL.has(obj):
 		return LEVEL[obj]
+	for suffix in ["_snow", "_sand", "_dry"]:                # the snow and desert looks break like the original
+		if obj.ends_with(suffix) and LEVEL.has(obj.trim_suffix(suffix)):
+			return LEVEL[obj.trim_suffix(suffix)]
 	if obj.begins_with("kit_"):                       # the fort in the industrial yard
 		var m := obj.get_slice("_", 2)
 		if MAT_HP.has(m):
@@ -121,7 +125,7 @@ func _level_spec(obj: String) -> Variant:
 func _debris_color(obj: String, mat: String) -> Color:
 	if obj.begins_with("rock_"):
 		return DEBRIS_COLORS.stone
-	if obj.begins_with("tree_"):
+	if obj.begins_with("tree_") or obj == "cactus":
 		return Color(0.35, 0.6, 0.25)
 	return DEBRIS_COLORS.get(mat, DEBRIS_COLORS.wood)
 
@@ -141,14 +145,15 @@ func _register_trees(body: StaticBody3D) -> void:
 	if mm == null:
 		return
 	var obj: String = (mm.get("mesh") as Mesh).resource_path.get_file().get_basename()
-	if not LEVEL.has(obj):
+	var spec0 = _level_spec(obj)
+	if spec0 == null:
 		return
 	var shapes := body.get_children()
 	var count: int = (mm.get("transforms") as PackedFloat32Array).size() / 12
 	if shapes.size() != count:
 		push_warning("trunk colliders and tree instances differ in %s" % group.name)
 		return
-	var spec: Array = LEVEL[obj]
+	var spec: Array = spec0
 	var table := {}
 	for i in count:
 		var cs: CollisionShape3D = shapes[i]

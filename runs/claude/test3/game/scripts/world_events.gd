@@ -7,7 +7,7 @@
 class_name WorldEvents
 extends Node3D
 
-const DROP_TIMES := [75.0, 150.0, 225.0]
+const DROP_TIMES := [100.0, 200.0, 300.0]
 const DROP_HEIGHT := 120.0
 const DROP_SPEED := 6.0
 const PAD_LAUNCH := 46.0
@@ -194,10 +194,10 @@ func _spawn_forage() -> void:
 		for e in tb.values():
 			if e.name == "tree_oak":
 				oaks.append(e)
-			elif e.name == "tree_pine":
+			elif String(e.name).begins_with("tree_pine"):
 				pines.append(e)
 	var n := 0
-	for list in [[oaks, "apple", 40], [pines, "mushroom", 30]]:
+	for list in [[oaks, "apple", 70], [pines, "mushroom", 50]]:
 		var arr: Array = list[0]
 		for i in mini(list[2], arr.size()):
 			var e: Dictionary = arr[game.rng.randi() % arr.size()]
