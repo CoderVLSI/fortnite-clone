@@ -143,7 +143,7 @@ func _draw() -> void:
 		panel(Rect2(sz.x / 2 - 260, sz.y - 250, 520, 64))
 		txt(Vector2(0, sz.y - 222), "Spectating  %s" % s.display_name, 24, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, sz.x)
 		txt(Vector2(0, sz.y - 198), "You placed #%d with %d eliminations    [Click] next player" % [p.placement, p.kills], 16, Color(0.85, 0.88, 0.92), HORIZONTAL_ALIGNMENT_CENTER, sz.x)
-	if game.over:
+	if game.over and not game.summary_shown:                       # the summary panel replaces the banner
 		_draw_end(sz, p)
 
 

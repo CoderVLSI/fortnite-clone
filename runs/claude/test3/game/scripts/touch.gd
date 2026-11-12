@@ -66,6 +66,9 @@ func _input(e: InputEvent) -> void:
 	if e is InputEventScreenTouch:
 		var p: Vector2 = e.position
 		if e.pressed:
+			if Rect2(16, 16, 110, 46).has_point(p):               # PAUSE button, top-left corner
+				game.pause_menu.open()
+				return
 			for name in buttons():
 				var b: Array = buttons()[name]
 				if p.distance_to(b[0]) <= b[1] * 1.15:
@@ -117,6 +120,9 @@ func _process(_d: float) -> void:
 
 func _draw() -> void:
 	var col := Color(1, 1, 1, 0.28)
+	draw_rect(Rect2(16, 16, 110, 46), Color(0.05, 0.07, 0.11, 0.55))
+	draw_rect(Rect2(16, 16, 110, 46), Color(1, 1, 1, 0.6), false, 2.0)
+	draw_string(font, Vector2(16, 47), "PAUSE", HORIZONTAL_ALIGNMENT_CENTER, 110, 20, Color(1, 1, 1, 0.9))
 	for name in buttons():
 		var b: Array = buttons()[name]
 		var on: bool = (name == "fire" and fire) or (name == "aim" and aim)

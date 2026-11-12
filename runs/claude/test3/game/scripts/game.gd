@@ -48,6 +48,13 @@ var movetest := false
 var poses := false
 var eventtest := false
 var crosshairs := false
+# front end (menu / pause / summary)
+var player_damage := 0.0                 # damage the player has dealt, shown on the summary
+var player_survived := 0.0               # match time when the player was eliminated (or the match ended)
+var over_time := 0.0
+var summary_shown := false
+var pause_menu: CanvasLayer
+var summarytest := ""                    # --summarytest=<dir>: scripted end-of-match run that saves menu_*.png captures
 
 
 func _ready() -> void:
@@ -60,6 +67,7 @@ func _ready() -> void:
 		if a == "--poses": poses = true
 		if a == "--eventtest": eventtest = true
 		if a == "--crosshairs": crosshairs = true
+		if a.begins_with("--summarytest="): summarytest = a.get_slice("=", 1)
 		if a.begins_with("--seed="): seed_v = int(a.get_slice("=", 1))
 		if a.begins_with("--shots="):
 			shots_dir = a.get_slice("=", 1)
@@ -92,6 +100,13 @@ func _ready() -> void:
 	layer.add_child(hud)
 	hud.setup(self)
 	announce("Jump when you are ready")
+	pause_menu = preload("res://scripts/pause_menu.gd").new()       # front end: Esc opens it (player.gd)
+	add_child(pause_menu)
+	pause_menu.setup(self)
+	if summarytest != "":
+		var st := preload("res://scripts/menutest.gd").new()
+		add_child(st)
+		st.setup(self, summarytest)
 	if OS.has_feature("mobile"):                                   # phones: no shadows or MSAA, shorter view
 		var sun := island.find_child("Sun", true, false) as DirectionalLight3D
 		if sun:
@@ -337,6 +352,11 @@ func _physics_process(delta: float) -> void:
 
 
 func _process(_d: float) -> void:
+	if over and not summary_shown and not autotest and match_time - over_time >= 3.0:
+		summary_shown = true                                       # banner has been up for ~3 s: show the summary panel
+		var sm := preload("res://scripts/summary.gd").new()
+		add_child(sm)
+		sm.setup(self)
 	if shots_dir != "" and shot_i < shot_times.size() and match_time >= shot_times[shot_i]:
 		if shot_times[shot_i] == 100.0:
 			controller.show_map = true
@@ -380,6 +400,9 @@ func _check_win() -> void:
 		print("T=%d alive=%d landed=%d armed=%d pickups_left=%d modes=%s storm r=%.0f" % [int(match_time), n, landed, armed, pickups.size(), modes, storm.radius])
 	if n <= 1:
 		over = true
+		over_time = match_time
+		if player.alive():
+			player_survived = match_time
 		for a in actors:
 			if a.alive():
 				winner = a
@@ -424,6 +447,8 @@ func sfx(_id: String, _pos: Vector3) -> void:
 
 func on_damage_dealt(attacker: Actor, victim: Actor, amount: float, at: Vector3) -> void:
 	stats.damage += amount
+	if attacker == player:
+		player_damage += amount
 	if attacker == player and hud:
 		hud.add_damage_number(at, amount, victim.shield > 0.0, not victim.alive())
 	if victim == player and hud and attacker:
@@ -432,6 +457,8 @@ func on_damage_dealt(attacker: Actor, victim: Actor, amount: float, at: Vector3)
 
 func on_eliminated(victim: Actor, killer: Actor) -> void:
 	victim.placement = alive_count() + 1
+	if victim == player:
+		player_survived = match_time
 	var cause := "killed" if (killer != null and killer != victim) else ("storm" if storm.outside(victim.global_position) > 0.0 else "other")
 	stats["deaths_" + cause] = stats.get("deaths_" + cause, 0) + 1
 	if autotest:
