@@ -146,11 +146,43 @@ static func _down(t: float) -> Vector3:
 	return Vector3(0, -cos(t), -sin(t))
 
 
+const FAR_HIDE := 260.0                 # beyond this nobody is drawn at all (50 players on a phone)
+const FAR_LOD := 90.0                   # beyond this the animation steps every 4th frame, without the pose tweaks
+var lod_far := false
+var lod_acc := 0.0
+var lod_n := 0
+
+
+func _lod(delta: float) -> int:
+	## 0: too far to draw, 1: far (cheap animation), 2: close enough to animate fully.
+	var cam := get_viewport().get_camera_3d()
+	var d := cam.global_position.distance_to(global_position) if cam else 0.0
+	if d > FAR_HIDE:
+		visible = false
+		return 0
+	var far := d > FAR_LOD
+	if far != lod_far:
+		lod_far = far
+		anim.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL if far else AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_IDLE
+		pose.active = not far
+		lod_acc = 0.0
+	if far:
+		lod_acc += delta
+		lod_n += 1
+		if lod_n % 4 == 0:
+			anim.advance(lod_acc)
+			lod_acc = 0.0
+	return 1 if far else 2
+
+
 func animate(delta: float, a: Actor) -> void:
 	var st := a.state
 	visible = st != Actor.State.BLIMP and st != Actor.State.DEAD
 	glider.visible = st == Actor.State.GLIDE
 	if not visible:
+		return
+	var detail := 2 if a.is_player else _lod(delta)
+	if detail == 0:
 		return
 	var hv := Vector2(a.velocity.x, a.velocity.z).length()
 	var armed := held_id != "" and held_id != "pickaxe"
@@ -246,6 +278,8 @@ func animate(delta: float, a: Actor) -> void:
 			arm_mode = "swing"
 			right_only = true
 	_play(c, speed)
+	if detail < 2:
+		return                                     # far away: the clip alone, no limb overrides
 	# directions for the overridden limbs
 	var f := Vector3(0, sin(a.aim_pitch), -cos(a.aim_pitch))           # aim forward, with pitch
 	var dn := Vector3(0, -cos(a.aim_pitch), -sin(a.aim_pitch))

@@ -61,7 +61,7 @@ func _run() -> void:
 	check("the countdown starts the match", scene_name() == "game.tscn")
 	await wait(30)
 	var game = current_scene
-	check("the match is running", game.match_time > 0.2 and game.actors.size() == 25, "t=%.1f" % game.match_time)
+	check("the match is running", game.match_time > 0.2 and game.actors.size() == 50, "t=%.1f" % game.match_time)
 	# end the match: eliminate every bot
 	game.player.state = Actor.State.GROUND
 	for a in game.actors:

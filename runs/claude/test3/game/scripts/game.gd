@@ -3,13 +3,15 @@
 extends Node3D
 
 const Terrain := preload("res://scripts/terrain.gd")
-const BOT_COUNT := 24
+const BOT_COUNT := 49
 const BLIMP_HEIGHT := 150.0
 const BLIMP_SPEED := 20.0                # 1000 m in 50 s: right across the big island
 const BLIMP_TIME := 50.0
-const LOOT_SPOTS := 260
+const LOOT_SPOTS := 340
 const BOT_NAMES := ["Mako", "Juniper", "Flint", "Sable", "Quill", "Tansy", "Rook", "Indigo", "Bramble", "Pike", "Wren", "Cobalt",
-		"Marlow", "Saffron", "Onyx", "Fennel", "Harbor", "Lark", "Dune", "Ember", "Sorrel", "Vesper", "Gale", "Thistle"]
+		"Marlow", "Saffron", "Onyx", "Fennel", "Harbor", "Lark", "Dune", "Ember", "Sorrel", "Vesper", "Gale", "Thistle",
+		"Aspen", "Basalt", "Cinder", "Delta", "Echo", "Fable", "Garnet", "Hollis", "Ivy", "Jasper", "Kestrel", "Linden",
+		"Moss", "Nova", "Opal", "Pepper", "Quarry", "Rowan", "Slate", "Tundra", "Umber", "Vale", "Willow", "Yarrow", "Zephyr"]
 
 var terrain: Terrain
 var rng := RandomNumberGenerator.new()

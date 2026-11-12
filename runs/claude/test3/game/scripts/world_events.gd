@@ -42,7 +42,11 @@ func setup(g: Node) -> void:
 
 func _tower_deck(i: int, toward: Vector3) -> Vector3:
 	## A point at hand height on tower i's deck, on the side facing `toward`.
-	var tp: Vector2 = game.terrain.towers[i]
+	return _deck_at(game.terrain.towers[i], toward)
+
+
+func _deck_at(tp: Vector2, toward: Vector3) -> Vector3:
+	## The same for whichever tower stands nearest to `tp`.
 	var best: Node3D = null
 	for n in game.island.find_children("LookoutTower_*", "Node3D", true, false):
 		if best == null or Vector2(n.global_position.x, n.global_position.z).distance_to(tp) < Vector2(best.global_position.x, best.global_position.z).distance_to(tp):
@@ -65,6 +69,23 @@ func _build_zips() -> void:
 	var lines := [[_tower_deck(0, hill_w), hill_w], [_tower_deck(2, Vector3.ZERO), Vector3.ZERO], [hill_n, hill_c]]
 	# the middle line runs between the south and south-east towers
 	lines[1] = [_tower_deck(2, _tower_deck(1, Vector3.ZERO)), _tower_deck(1, _tower_deck(2, Vector3.ZERO))]
+	# the big island: towers down to the towns, and up onto the desert mesas (the only way up without building)
+	var snow_t: Vector2 = T.extra_towers[0]
+	var west_t: Vector2 = T.extra_towers[1]
+	var east_t: Vector2 = T.extra_towers[2]
+	var snow_town := _ground_anchor(T.snow_town + (snow_t - T.snow_town).normalized() * 30.0)
+	lines.append([_deck_at(snow_t, snow_town), snow_town])
+	var cove := _ground_anchor(T.east_cove + (east_t - T.east_cove).normalized() * 26.0)
+	lines.append([_deck_at(east_t, cove), cove])
+	var desert := _ground_anchor(T.desert_town + Vector2(30, -20))
+	lines.append([_mesa_top(T.mesas[0], desert), desert])
+	var depot := _ground_anchor(T.depot + Vector2(-36, -22))
+	lines.append([_mesa_top(T.mesas[3], depot), depot])
+	lines.append([_deck_at(west_t, _mesa_top(T.mesas[2], Vector3.ZERO)), _mesa_top(T.mesas[2], _deck_at(west_t, Vector3.ZERO))])
+	for l in lines.duplicate():
+		if not _clear(l[0], l[1]):
+			push_warning("zip line skipped: the cable would cut through the ground")
+			lines.erase(l)
 	for l in lines:
 		var a: Vector3 = l[0]
 		var b: Vector3 = l[1]
@@ -72,6 +93,24 @@ func _build_zips() -> void:
 		var z := {"a": a, "b": b, "length": length, "sag": length * 0.02}
 		zips.append(z)
 		_draw_zip(z)
+
+
+func _mesa_top(m: Array, toward: Vector3) -> Vector3:
+	## A pole near the edge of a mesa top, on the side facing `toward`.
+	var c: Vector2 = m[0]
+	var d := Vector2(toward.x, toward.z) - c
+	var p := c + (d.normalized() if d.length() > 1.0 else Vector2.RIGHT) * (float(m[1]) - 8.0)
+	return _ground_anchor(p)
+
+
+func _clear(a: Vector3, b: Vector3) -> bool:
+	## The cable stays at least a metre above the ground all the way.
+	var z := {"a": a, "b": b, "length": a.distance_to(b), "sag": a.distance_to(b) * 0.02}
+	for i in range(2, 39):
+		var p := cable_point(z, i / 40.0)
+		if p.y < game.terrain.height(p.x, p.z) + 1.0:
+			return false
+	return true
 
 
 func cable_point(z: Dictionary, t: float) -> Vector3:
@@ -151,7 +190,10 @@ void fragment() {
 }"""
 	var mat := ShaderMaterial.new()
 	mat.shader = sh
-	for p in [T.village + Vector2(48, -36), T.farm + Vector2(-46, 34), T.yard + Vector2(18, -50)]:
+	var where: Array = [T.village + Vector2(48, -36), T.farm + Vector2(-46, 34), T.yard + Vector2(18, -50),
+			T.snow_town + Vector2(34, 22), T.desert_town + Vector2(-34, -26), T.depot + Vector2(-44, 14),
+			T.west_hamlet + Vector2(30, -32), T.east_cove + Vector2(-34, 26), T.lake + Vector2(-40, -10), Vector2(170, -230)]
+	for p in where:
 		var spot := _dry_spot(p)
 		var n := Node3D.new()
 		add_child(n)

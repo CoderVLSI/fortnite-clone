@@ -153,7 +153,7 @@ func _build_ui() -> void:
 	lobby_box = _left_column()
 	lobby_box.visible = false
 	lobby_box.add_child(MenuUI.label("LOBBY", 70, Color.WHITE))
-	lobby_box.add_child(MenuUI.label("Players: 25 (you + 24 bots)", 28, MenuUI.ACCENT))
+	lobby_box.add_child(MenuUI.label("Players: 50 (you + 49 bots)", 28, MenuUI.ACCENT))
 	bots_btn = MenuUI.button("", 22, Vector2(200, 46))
 	bots_btn.pressed.connect(_cycle_difficulty)
 	lobby_box.add_child(bots_btn)

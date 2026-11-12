@@ -130,7 +130,7 @@ func _ready() -> void:
 	await frames(150)
 	check("a thrown launch pad lands and deploys", E.pads.size() == pads1 + 1, "%.1f m away" % (Vector2(E.pads[E.pads.size() - 1].pos.x - a.global_position.x, E.pads[E.pads.size() - 1].pos.z - a.global_position.z).length() if E.pads.size() > pads1 else -1.0))
 	# ---------------------------------------------------------------- zip line
-	check("three zip lines", E.zips.size() == 3, ", ".join(E.zips.map(func(z): return "%.0f m" % z.length)))
+	check("eight zip lines and ten rifts", E.zips.size() == 8 and E.rifts.size() == 10, ", ".join(E.zips.map(func(z): return "%.0f m" % z.length)) + "; rifts %d" % E.rifts.size())
 	var z: Dictionary = E.zips[0]
 	var end: Vector3 = E.cable_point(z, 1.0)
 	await put(Vector3(end.x + 1.0, T.height(end.x + 1.0, end.z) + 0.1, end.z))
