@@ -1,0 +1,37 @@
+{
+ "asset": "tactical_shotgun",
+ "triangles": 1640,
+ "budget": 7000,
+ "per_object": {
+  "tactical_metal": 520,
+  "tactical_body": 832,
+  "tactical_shells": 268,
+  "tactical_trigger": 20
+ },
+ "dimensions_m": [
+  0.0935,
+  0.891,
+  0.241
+ ],
+ "min": [
+  -0.0575,
+  -0.551,
+  -0.096
+ ],
+ "max": [
+  0.036,
+  0.34,
+  0.145
+ ],
+ "objects": 4,
+ "materials": [
+  "mat_black",
+  "mat_bore",
+  "mat_brass",
+  "mat_gunmetal",
+  "mat_shell",
+  "mat_slate",
+  "mat_slate_dark"
+ ],
+ "problems": []
+}

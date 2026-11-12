@@ -1,0 +1,38 @@
+{
+ "asset": "smg",
+ "triangles": 1360,
+ "budget": 6000,
+ "per_object": {
+  "smg_metal": 552,
+  "smg_sight": 100,
+  "smg_lens": 12,
+  "smg_body": 524,
+  "smg_magazine": 152,
+  "smg_trigger": 20
+ },
+ "dimensions_m": [
+  0.07,
+  0.571,
+  0.367
+ ],
+ "min": [
+  -0.035,
+  -0.361,
+  -0.203
+ ],
+ "max": [
+  0.035,
+  0.21,
+  0.164
+ ],
+ "objects": 6,
+ "materials": [
+  "mat_bore",
+  "mat_gunmetal",
+  "mat_lens",
+  "mat_olive",
+  "mat_slate",
+  "mat_slate_dark"
+ ],
+ "problems": []
+}

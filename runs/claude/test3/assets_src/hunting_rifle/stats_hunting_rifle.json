@@ -1,0 +1,35 @@
+{
+ "asset": "hunting_rifle",
+ "triangles": 1424,
+ "budget": 7000,
+ "per_object": {
+  "hunting_metal": 768,
+  "hunting_body": 480,
+  "hunting_ammo": 156,
+  "hunting_trigger": 20
+ },
+ "dimensions_m": [
+  0.0972,
+  1.141,
+  0.193
+ ],
+ "min": [
+  -0.025,
+  -0.781,
+  -0.078
+ ],
+ "max": [
+  0.0722,
+  0.36,
+  0.115
+ ],
+ "objects": 4,
+ "materials": [
+  "mat_bore",
+  "mat_brass",
+  "mat_gunmetal",
+  "mat_walnut",
+  "mat_walnut_dark"
+ ],
+ "problems": []
+}

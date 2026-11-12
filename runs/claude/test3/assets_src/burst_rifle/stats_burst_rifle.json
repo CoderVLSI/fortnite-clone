@@ -1,0 +1,38 @@
+{
+ "asset": "burst_rifle",
+ "triangles": 1584,
+ "budget": 7000,
+ "per_object": {
+  "burst_metal": 320,
+  "burst_body": 856,
+  "burst_optic": 180,
+  "burst_lens": 44,
+  "burst_magazine": 164,
+  "burst_trigger": 20
+ },
+ "dimensions_m": [
+  0.066,
+  0.823,
+  0.3326
+ ],
+ "min": [
+  -0.033,
+  -0.501,
+  -0.1346
+ ],
+ "max": [
+  0.033,
+  0.322,
+  0.198
+ ],
+ "objects": 6,
+ "materials": [
+  "mat_bore",
+  "mat_grey",
+  "mat_grey_dark",
+  "mat_gunmetal",
+  "mat_lens",
+  "mat_olive"
+ ],
+ "problems": []
+}
