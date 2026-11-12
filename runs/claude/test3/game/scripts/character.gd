@@ -6,6 +6,13 @@ class_name Character
 extends Node3D
 
 const SOLDIER := preload("res://assets/characters/Soldier.glb")
+## Bodies a skin can use. The Xbot robot keeps its own idle / walk / run (the Soldier's clips do not sit well on
+## its proportions); it is also built facing +Z, so it is turned round.
+const BODIES := {
+	"Soldier": {"scene": "res://assets/characters/Soldier.glb", "clips": {}, "turn": 0.0, "tint": 0.5},
+	"Xbot": {"scene": "res://assets/characters/Xbot.glb", "clips": {"Idle": "idle", "Walk": "walk", "Run": "run"}, "turn": PI, "tint": 0.85},
+}
+var clip_map := {}
 const HIP_SCALE := 1.12                  # the Soldier's legs compared with the old blocky body
 ## Emotes for the emote wheel: Mixamo clips (Michelle's samba, Xbot's nod and head shake) and a wave
 ## done with the pose override. length 0 = loops until cancelled.
@@ -53,16 +60,19 @@ static func library() -> AnimationLibrary:
 	return _lib
 
 
-func build(outfit: Color, accent: Color, _skin: Color) -> void:
-	rig = SOLDIER.instantiate()
+func build(outfit: Color, accent: Color, _skin: Color, body_id := "Soldier") -> void:
+	var b: Dictionary = BODIES.get(body_id, BODIES.Soldier)
+	rig = (SOLDIER if body_id == "Soldier" else load(b.scene) as PackedScene).instantiate()
 	add_child(rig)
+	rig.rotation.y = b.turn
+	clip_map = b.clips
 	skel = rig.find_children("*", "Skeleton3D", true, false)[0]
 	anim = rig.find_children("*", "AnimationPlayer", true, false)[0]
 	anim.add_animation_library("x", library())
 	for n in ["Idle", "Walk", "Run"]:
-		anim.get_animation(n).loop_mode = Animation.LOOP_LINEAR
+		anim.get_animation(clip_map.get(n, n)).loop_mode = Animation.LOOP_LINEAR
 	# each player gets a tint of their outfit colour
-	var key := outfit.to_html()
+	var key := body_id + outfit.to_html()
 	for mi in rig.find_children("*", "MeshInstance3D", true, false):
 		for s in mi.mesh.get_surface_count():
 			var k := "%s_%s_%d" % [key, mi.name, s]
@@ -70,7 +80,10 @@ func build(outfit: Color, accent: Color, _skin: Color) -> void:
 				var base: Material = mi.get_active_material(s)
 				var m: Material = base.duplicate() if base else StandardMaterial3D.new()
 				if m is StandardMaterial3D:
-					(m as StandardMaterial3D).albedo_color = Color.WHITE.lerp(outfit, 0.5)
+					var shade: Color = Color.WHITE.lerp(outfit, b.tint)
+					if body_id == "Xbot" and s % 2 == 1:
+						shade = accent.lightened(0.25)                 # the robot's joints take the accent colour
+					(m as StandardMaterial3D).albedo_color = shade
 				_tints[k] = m
 			mi.set_surface_override_material(s, _tints[k])
 	pose = PoseOverride.new()
@@ -135,6 +148,7 @@ func hold(id: String) -> void:
 
 
 func _play(name: String, speed: float) -> void:
+	name = clip_map.get(name, name)
 	if name != clip:
 		clip = name
 		anim.play(name, 0.22)

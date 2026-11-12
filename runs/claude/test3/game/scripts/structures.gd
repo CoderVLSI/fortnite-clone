@@ -220,7 +220,7 @@ func damage_at(collider: Object, shape: int, amount: float, attacker: Actor, at:
 
 
 func damage(e: Dictionary, amount: float, attacker: Actor, at: Vector3) -> void:
-	if e.dead or amount <= 0.0:
+	if e.dead or amount <= 0.0 or game.warming_up():          # the island stays whole through the warm-up
 		return
 	e.hp -= amount
 	if attacker != null and attacker == game.player and game.hud:
@@ -479,7 +479,7 @@ func update_preview(a: Actor, show: bool) -> void:
 
 
 func place(a: Actor) -> bool:
-	if a.build_piece == "" or a.state != Actor.State.GROUND:
+	if a.build_piece == "" or a.state != Actor.State.GROUND or game.warming_up():
 		return false
 	if int(a.mats[a.build_mat]) < COST:            # out of this material: build with one you have
 		for m in MATS:

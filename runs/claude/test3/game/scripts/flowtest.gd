@@ -33,6 +33,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
+	root.get_node("Settings").skip_warmup = true                 # the first match goes straight to the blimp
 	change_scene_to_file("res://scenes/menu.tscn")
 	await wait(10)
 	check("the game opens on the main menu", scene_name() == "menu.tscn", scene_name())
@@ -76,12 +77,19 @@ func _run() -> void:
 			again = b
 	check("the summary has Play again", again != null)
 	if again:
+		root.get_node("Settings").skip_warmup = false            # the second one opens with the warm-up
 		again.pressed.emit()
 		await until(func(): return current_scene != game and current_scene != null and scene_name() == "game.tscn", 8.0)
 		await wait(10)
 		check("Play again starts a fresh match", scene_name() == "game.tscn" and current_scene != game and current_scene.match_time < 2.0)
 	game = current_scene
 	await wait(10)
+	check("a match from the lobby opens with the warm-up, everyone on the island", game.warming_up() and game.player.state == Actor.State.GROUND
+			and game.actors[1].state == Actor.State.GROUND, "%.1f s left" % game.warmup_left)
+	var hp0: float = game.player.hp
+	game.player.hit(60.0, game.actors[1], true, Vector3.ZERO)
+	check("nothing hurts during the warm-up", game.player.hp == hp0)
+	var w0: float = game.warmup_left
 	if game.pause_menu and game.pause_menu.has_method("open"):
 		game.pause_menu.open()
 	else:
@@ -94,7 +102,7 @@ func _run() -> void:
 	check("Esc pauses the match", paused)
 	var t0: float = game.match_time
 	await wait(20)
-	check("time stands still while paused", absf(game.match_time - t0) < 0.001)
+	check("time stands still while paused", absf(game.match_time - t0) < 0.001 and absf(game.warmup_left - w0) < 0.05)
 	var leave: Button = null
 	for b in game.find_children("*", "Button", true, false):
 		if b.text.begins_with("Leave"):

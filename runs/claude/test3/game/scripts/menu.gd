@@ -6,7 +6,7 @@
 extends Node3D
 
 const GAME_SCENE := "res://scenes/game.tscn"
-const SKIP_FLAGS := ["--demo", "--autotest", "--buildtest", "--movetest", "--eventtest", "--poses", "--crosshairs", "--soundtest", "--invtest", "--invshot"]
+const SKIP_FLAGS := ["--demo", "--autotest", "--buildtest", "--movetest", "--eventtest", "--poses", "--crosshairs", "--soundtest", "--invtest", "--invshot", "--profile"]
 const SKIP_PREFIXES := ["--shots=", "--summarytest="]
 const NEWS := ["Snowy mountains and a desert with mesas: the island is now 800 m across",
 	"50 players per match", "New guns: SMG, tactical shotgun, burst rifle, hunting rifle",
@@ -174,7 +174,7 @@ func _dress_character() -> void:
 	var o: Array = Settings.OUTFITS[Settings.outfit]
 	stage_char = Character.new()
 	pivot.add_child(stage_char)
-	stage_char.build(o[1], o[2], Color.WHITE)
+	stage_char.build(o[1], o[2], Color.WHITE, o[3])
 	stage_char.position.y = 0.04
 	stage_char.rotation.y = PI                                  # the body faces -Z; turn it to the camera
 	stage_char.hold("")
@@ -190,7 +190,7 @@ func _process(delta: float) -> void:
 	if stage_char:
 		emote_t -= delta
 		if emote_t <= 0.0:
-			if stage_char.clip == "Idle":
+			if stage_char.clip == stage_char.clip_map.get("Idle", "Idle"):
 				var e: String = ["x/Michelle_SambaDance", "x/Xbot_agree"][randi() % 2]
 				stage_char._play(e, 1.0)
 				emote_t = 5.0 if e.ends_with("Dance") else 2.0
@@ -390,8 +390,8 @@ func _build_locker_page() -> void:
 	locker_box = _card(Control.PRESET_CENTER_RIGHT)
 	locker_box.offset_left = -560
 	locker_box.offset_right = -36
-	locker_box.offset_top = -230
-	locker_box.offset_bottom = 230
+	locker_box.offset_top = -330
+	locker_box.offset_bottom = 330
 	ui.add_child(locker_box)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 10)
@@ -406,7 +406,7 @@ func _build_locker_page() -> void:
 	for i in Settings.OUTFITS.size():
 		var o: Array = Settings.OUTFITS[i]
 		var b := Button.new()
-		b.custom_minimum_size = Vector2(110, 110)
+		b.custom_minimum_size = Vector2(110, 108)
 		b.focus_mode = Control.FOCUS_NONE
 		b.text = o[0]
 		b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP

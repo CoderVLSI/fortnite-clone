@@ -59,6 +59,9 @@ var pause_menu: CanvasLayer
 var summarytest := ""                    # --summarytest=<dir>: scripted end-of-match run that saves menu_*.png captures
 var soundtest := false
 var audio: GameAudio
+var profile := false                     # --profile: print frame-time monitors every 10 s
+const WARMUP := 20.0                     # the warm-up before the blimp: everyone on the island, nothing counts yet
+var warmup_left := 0.0
 var difficulty := "normal"               # bot difficulty: easy / normal / sweaty (Settings, or --difficulty=)
 
 
@@ -80,6 +83,7 @@ func _ready() -> void:
 		if a == "--crosshairs": crosshairs = true
 		if a.begins_with("--summarytest="): summarytest = a.get_slice("=", 1)
 		if a == "--soundtest": soundtest = true
+		if a == "--profile": profile = true
 		if a.begins_with("--seed="): seed_v = int(a.get_slice("=", 1))
 		if a.begins_with("--shots="):
 			shots_dir = a.get_slice("=", 1)
@@ -89,6 +93,12 @@ func _ready() -> void:
 	terrain = Terrain.new()
 	island = load("res://scenes/island.tscn").instantiate()
 	add_child(island)
+	var tb := island.get_node_or_null("Terrain/TerrainBody/CollisionShape3D") as CollisionShape3D
+	if tb == null:
+		var found := island.get_node("Terrain/TerrainBody").find_children("*", "CollisionShape3D", false, false)
+		tb = found[0] if found.size() > 0 else null
+	if tb and tb.shape is HeightMapShape3D:
+		terrain.use_baked_heights(tb.shape, tb.scale.x)
 	fx_root = Node3D.new()
 	add_child(fx_root)
 	audio = GameAudio.new()
@@ -152,6 +162,7 @@ func _ready() -> void:
 	if autotest:
 		Engine.time_scale = 8.0
 		Engine.max_physics_steps_per_frame = 16
+	_start_warmup()
 	var st := get_node_or_null("/root/Settings")
 	if st and not demo:
 		st.play_music("battle", -9.0, 2.5)          # sits under gunfire and footsteps
@@ -204,8 +215,21 @@ func forget_door(n: Node) -> void:
 			doors.erase(d)
 
 
+var prof := {}                          # --profile: microseconds spent per area since the last report
+
+
+func prof_add(key: String, us: int) -> void:
+	prof[key] = prof.get(key, 0) + us
+
+
 func nav_path(from: Vector3, to: Vector3) -> PackedVector3Array:
-	return nav.path(from, to, can_see)
+	if not profile:
+		return nav.path(from, to, can_see)
+	var t0 := Time.get_ticks_usec()
+	var p := nav.path(from, to, can_see)
+	prof_add("nav", Time.get_ticks_usec() - t0)
+	prof["nav_n"] = prof.get("nav_n", 0) + 1
+	return p
 
 
 func _setup_blimp() -> void:
@@ -321,17 +345,18 @@ func _setup_actors() -> void:
 			Color(0.2, 0.7, 0.7), Color(0.85, 0.45, 0.65), Color(0.45, 0.5, 0.55)]
 	player = Actor.new()
 	add_child(player)
-	var look: Array = [Color(0.95, 0.55, 0.15), Color(0.15, 0.2, 0.3)]
+	var look: Array = [Color(0.95, 0.55, 0.15), Color(0.15, 0.2, 0.3), "Soldier"]
 	var stn := get_node_or_null("/root/Settings")
 	if stn and not demo:
 		var o: Array = stn.OUTFITS[stn.outfit]          # the outfit picked in the lobby's locker
-		look = [o[1], o[2]]
-	player.setup(self, "You", true, look[0], look[1])
+		look = [o[1], o[2], o[3]]
+	player.setup(self, "You", true, look[0], look[1], look[2])
 	actors.append(player)
 	for i in BOT_COUNT:
 		var b := Actor.new()
 		add_child(b)
-		b.setup(self, BOT_NAMES[i], false, colors[i % colors.size()], colors[(i * 3 + 2) % colors.size()].darkened(0.3))
+		var robot := i % 4 == 3                                   # a quarter of the bots wear robot skins
+		b.setup(self, BOT_NAMES[i], false, colors[i % colors.size()], colors[(i * 3 + 2) % colors.size()].darkened(0.3) if not robot else colors[(i * 5 + 1) % colors.size()], "Xbot" if robot else "Soldier")
 		actors.append(b)
 		var brain := preload("res://scripts/bot.gd").new()
 		b.add_child(brain)
@@ -347,7 +372,64 @@ func _setup_actors() -> void:
 
 # ----------------------------------------------------------------------------- frame
 
+func warming_up() -> bool:
+	return warmup_left > 0.0
+
+
+func _start_warmup() -> void:
+	## A real match (started from the lobby, no test or demo flags) opens with a short warm-up on the island.
+	var st := get_node_or_null("/root/Settings")
+	var flags: Array = Array(OS.get_cmdline_user_args()).filter(func(x: String) -> bool: return x.begins_with("--"))
+	if demo or not flags.is_empty() or (st and st.get("skip_warmup")):
+		return
+	warmup_left = WARMUP
+	announce_text = ""                                   # no blimp to jump from yet
+	var spots: Array = get_tree().get_nodes_in_group("spawn")
+	spots.shuffle()
+	for i in actors.size():
+		var a: Actor = actors[i]
+		var m: Node3D = spots[i % spots.size()]
+		var off := Vector3(cos(i * 2.4), 0, sin(i * 2.4)) * (2.5 * (i / spots.size()))
+		a.state = Actor.State.GROUND
+		a.global_position = m.global_position + off + Vector3(0, 0.3, 0)
+		a.velocity = Vector3.ZERO
+		a.aim_yaw = m.rotation.y + PI
+	controller.yaw = player.aim_yaw
+
+
+func _end_warmup() -> void:
+	## Everyone boards the blimp with nothing: the match proper starts now.
+	warmup_left = 0.0
+	for a in actors:
+		a.stop_emote()
+		a.zip = null
+		a.mantle_t = -1.0
+		a.launched = false
+		a.velocity = Vector3.ZERO
+		a.set_crouched(false)
+		a.build_piece = ""
+		for i in Items.SLOTS:
+			a.slots[i] = null
+		a.active = -1
+		for t in Items.AMMO_TYPES:
+			a.ammo[t] = 0
+		a.mats = {"wood": 0, "brick": 0, "metal": 0}
+		a.hp = 100.0
+		a.shield = 0.0
+		a.state = Actor.State.BLIMP
+		a._refresh_held()
+	announce("All aboard the blimp! Jump when you are ready")
+
+
 func _physics_process(delta: float) -> void:
+	if warmup_left > 0.0:
+		warmup_left -= delta
+		pick_tick += 1
+		if pick_tick % 12 == 3:
+			_update_doors()
+		if warmup_left <= 0.0:
+			_end_warmup()
+		return
 	match_time += delta
 	if match_time < BLIMP_TIME + 6.0:
 		blimp.position = blimp_pos()
@@ -377,6 +459,15 @@ func _physics_process(delta: float) -> void:
 	_update_projectiles(delta)
 	_update_pickups(delta)
 	_check_win()
+	if profile and Engine.get_physics_frames() % 600 == 0:
+		print("PROFILE t=%.0f alive=%d physics=%.2f ms process=%.2f ms fps=%d" % [match_time, alive_count(),
+				Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0, Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,
+				Engine.get_frames_per_second()])
+		var parts := []
+		for k in prof:
+			parts.append("%s=%s" % [k, ("%.1fms/s" % (prof[k] / 10000.0)) if not k.ends_with("_n") else str(prof[k] / 10)])
+		print("   ", " ".join(parts))
+		prof.clear()
 
 
 func _process(_d: float) -> void:
@@ -668,7 +759,7 @@ func nearest_container(pos: Vector3, max_dist: float) -> Variant:
 
 
 func open_container(c: Dictionary, _by: Actor) -> void:
-	if c.opened:
+	if c.opened or warming_up():
 		return
 	c.opened = true
 	sfx("chest_open", c.pos)

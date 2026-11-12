@@ -17,11 +17,15 @@ const ACTIONS := [
 const MSAA_VALUES := [0, 2, 4]
 const FPS_VALUES := [30, 60, 120, 0]
 const DIFFICULTIES := ["easy", "normal", "sweaty"]
-## Locker outfits: [name, outfit colour, accent colour]
-const OUTFITS := [["Ember", Color(0.95, 0.55, 0.15), Color(0.15, 0.2, 0.3)], ["Glacier", Color(0.45, 0.75, 0.95), Color(0.12, 0.18, 0.32)],
-		["Cactus", Color(0.4, 0.75, 0.35), Color(0.3, 0.22, 0.12)], ["Royal", Color(0.6, 0.4, 0.9), Color(0.95, 0.8, 0.3)],
-		["Crimson", Color(0.85, 0.2, 0.25), Color(0.1, 0.1, 0.12)], ["Sand", Color(0.9, 0.78, 0.5), Color(0.45, 0.3, 0.18)],
-		["Midnight", Color(0.22, 0.25, 0.35), Color(0.3, 0.85, 0.9)], ["Snow", Color(0.92, 0.94, 0.98), Color(0.3, 0.45, 0.7)]]
+## Locker outfits: [name, outfit colour, accent colour, body] - the Soldier in eight colours and the robot in eight
+const OUTFITS := [["Ember", Color(0.95, 0.55, 0.15), Color(0.15, 0.2, 0.3), "Soldier"], ["Glacier", Color(0.45, 0.75, 0.95), Color(0.12, 0.18, 0.32), "Soldier"],
+		["Cactus", Color(0.4, 0.75, 0.35), Color(0.3, 0.22, 0.12), "Soldier"], ["Royal", Color(0.6, 0.4, 0.9), Color(0.95, 0.8, 0.3), "Soldier"],
+		["Crimson", Color(0.85, 0.2, 0.25), Color(0.1, 0.1, 0.12), "Soldier"], ["Sand", Color(0.9, 0.78, 0.5), Color(0.45, 0.3, 0.18), "Soldier"],
+		["Midnight", Color(0.22, 0.25, 0.35), Color(0.3, 0.85, 0.9), "Soldier"], ["Snow", Color(0.92, 0.94, 0.98), Color(0.3, 0.45, 0.7), "Soldier"],
+		["Volt Bot", Color(0.95, 0.85, 0.2), Color(0.15, 0.15, 0.18), "Xbot"], ["Neon Bot", Color(0.2, 0.95, 0.85), Color(0.85, 0.2, 0.75), "Xbot"],
+		["Chrome Bot", Color(0.8, 0.84, 0.9), Color(0.25, 0.5, 1.0), "Xbot"], ["Lava Bot", Color(0.95, 0.35, 0.15), Color(0.2, 0.1, 0.08), "Xbot"],
+		["Jungle Bot", Color(0.3, 0.6, 0.3), Color(0.85, 0.75, 0.3), "Xbot"], ["Shadow Bot", Color(0.18, 0.18, 0.22), Color(0.9, 0.2, 0.25), "Xbot"],
+		["Bubble Bot", Color(0.95, 0.55, 0.8), Color(0.35, 0.8, 0.95), "Xbot"], ["Arctic Bot", Color(0.85, 0.95, 1.0), Color(0.35, 0.6, 0.85), "Xbot"]]
 const MUSIC := {"lobby": "res://music/lobby.mp3", "battle": "res://music/battle.mp3"}
 const XP_PER_LEVEL := 1000
 var _music: Array[AudioStreamPlayer] = []    # two players, cross-faded
@@ -41,6 +45,7 @@ var music_volume := 0.6
 var show_fps := false
 var outfit := 0                          # index into OUTFITS, picked in the lobby's locker
 var career := {"matches": 0, "wins": 0, "kills": 0, "top10": 0, "best": 0, "xp": 0}
+var skip_warmup := false                 # not saved: the front-end test sets it to go straight to the blimp
 var bot_difficulty := "normal"           # one of DIFFICULTIES; --difficulty=<value> overrides it for a run without saving
 var bindings := {}                       # action -> {"k": physical keycode} or {"m": mouse button}
 var defaults := {}                       # action -> Array[InputEvent], captured from project.godot

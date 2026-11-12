@@ -280,24 +280,42 @@ func _use_pressed() -> bool:
 	return Input.is_action_just_pressed("interact")
 
 
+func _key_hint() -> String:
+	## The interact key as the player has it bound ("USE" on a touch screen).
+	return "USE " if touch != null else "[%s] " % Settings.event_text("interact")
+
+
 func _interaction() -> void:
+	if a.state == Actor.State.SKYDIVE and not a.launched:
+		if a.height_above_ground() > 8.0:
+			prompt = _key_hint() + " Deploy glider"
+			if _use_pressed():
+				a.deploy_glider()
+		return
 	if a.state != Actor.State.GROUND:
+		return
+	if game.warming_up():                               # warm-up: zip lines yes, loot no
+		var wz = game.events.zip_near(a)
+		if wz != null:
+			prompt = _key_hint() + " Ride the zip line"
+			if _use_pressed():
+				a.start_zip(wz[0], wz[1])
 		return
 	var c = game.nearest_container(a.global_position, 2.8)
 	if c != null:
-		prompt = "[E]  Open %s" % {"chest": "chest", "ammo_box": "ammo box", "supply_drop": "supply drop"}[c.kind]
+		prompt = _key_hint() + " Open %s" % {"chest": "chest", "ammo_box": "ammo box", "supply_drop": "supply drop"}[c.kind]
 		if _use_pressed():
 			game.open_container(c, a)
 		return
 	var zl = game.events.zip_near(a)
 	if zl != null:
-		prompt = "[E]  Ride the zip line" if touch == null else "USE  Ride the zip line"
+		prompt = _key_hint() + " Ride the zip line"
 		if _use_pressed():
 			a.start_zip(zl[0], zl[1])
 		return
 	var p = game.nearest_pickup(a, 2.2)
 	if p != null and p.item.has("id") and not a.wants(p.item):
-		prompt = "[E]  Swap for %s" % Items.label(p.item)
+		prompt = _key_hint() + " Swap for %s" % Items.label(p.item)
 		if _use_pressed():
 			var it: Dictionary = p.item
 			game.remove_pickup(p)

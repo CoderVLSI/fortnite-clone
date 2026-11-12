@@ -130,6 +130,11 @@ func _draw() -> void:
 	_draw_hotbar(sz, s)
 	_draw_centre(sz, s, ctl, now)
 	_draw_notes(sz, now)
+	if game.warming_up():
+		var wl := int(ceil(game.warmup_left))
+		panel(Rect2(sz.x / 2 - 260, 128, 520, 64))
+		txt(Vector2(0, 156), "WARM-UP", 22, MenuUI.ACCENT, HORIZONTAL_ALIGNMENT_CENTER, sz.x)
+		txt(Vector2(0, 184), "Blimp boards in 0:%02d   ·   nothing counts yet" % wl, 18, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, sz.x)
 	if ctl.wheel_open:
 		_draw_emote_wheel(sz, ctl)
 	if game.structures.edit_entry != null:

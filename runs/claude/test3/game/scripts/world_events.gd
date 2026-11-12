@@ -425,7 +425,7 @@ func zip_near(a: Actor) -> Variant:
 		for end in [0.0, 1.0]:
 			var p := cable_point(z, end)
 			var feet := a.global_position
-			if Vector2(p.x - feet.x, p.z - feet.z).length() < 2.4 and p.y - feet.y > 1.0 and p.y - feet.y < 5.5:
+			if Vector2(p.x - feet.x, p.z - feet.z).length() < 3.2 and p.y - feet.y > 1.0 and p.y - feet.y < 5.5:
 				return [z, end]
 	return null
 

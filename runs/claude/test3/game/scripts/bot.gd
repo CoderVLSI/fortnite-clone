@@ -58,6 +58,7 @@ var junk: Array = []                    # items this bot threw away, never to be
 var build_next := 0.0                   # earliest time for the next piece
 var cover_until := 0.0                  # sheltering behind a wall it just built
 var harvest_e = null                    # the tree or rock it is gathering from
+var harvest_search := 0.0               # next time it may look for one (the search walks every tree and rock)
 
 
 func setup(g: Node, actor: Actor, s: float) -> void:
@@ -90,6 +91,43 @@ func setup(g: Node, actor: Actor, s: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if not game.profile:
+		_tick(delta)
+		return
+	var t0 := Time.get_ticks_usec()
+	_tick(delta)
+	game.prof_add("bots", Time.get_ticks_usec() - t0)
+
+
+var wander_t := 0.0
+
+
+func _warmup_tick(delta: float) -> void:
+	## Warm-up: amble about, hop now and then, show off an emote.
+	a.in_fire = false
+	wander_t -= delta
+	if wander_t <= 0.0:
+		wander_t = game.rng.randf_range(1.5, 4.0)
+		var r: float = game.rng.randf()
+		if r < 0.25:
+			a.in_move = Vector2.ZERO
+			a.start_emote(["samba", "nod", "wave"][game.rng.randi() % 3])
+		elif r < 0.45:
+			a.in_move = Vector2.ZERO
+		else:
+			a.stop_emote()
+			a.aim_yaw = game.rng.randf() * TAU
+			a.in_move = Vector2(0, 1)
+			a.in_sprint = game.rng.randf() < 0.4
+	if a.in_move != Vector2.ZERO and game.rng.randf() < delta * 0.4:
+		a.in_jump = true
+
+
+func _tick(delta: float) -> void:
+	if game.warming_up():
+		if a.state == Actor.State.GROUND:
+			_warmup_tick(delta)
+		return
 	if not a.alive() or game.over:
 		a.in_fire = false
 		a.in_move = Vector2.ZERO
@@ -512,7 +550,8 @@ func _nearest_enemy() -> Actor:
 func _follow(delta: float) -> void:
 	repath -= delta
 	if repath <= 0.0:
-		repath = 1.6
+		# a far goal does not need a fresh path as often (getting stuck still asks for one at once)
+		repath = 1.6 if Vector2(goal.x - a.global_position.x, goal.z - a.global_position.z).length() < 35.0 else 4.0
 		path = game.nav_path(a.global_position, goal)
 		path_i = 1
 	var wp := goal
@@ -922,6 +961,9 @@ func _breach(to: Vector3) -> bool:
 func _harvest_target() -> Variant:
 	if harvest_e != null and not harvest_e.dead:
 		return harvest_e
+	if game.match_time < harvest_search:
+		return null
+	harvest_search = game.match_time + 4.0
 	var best = null
 	var bd := 40.0 * 40.0
 	for e in game.structures.harvestables():

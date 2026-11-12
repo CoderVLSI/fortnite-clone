@@ -81,7 +81,7 @@ var step_dist := 0.0
 var pickup_cd := 0.0
 
 
-func setup(g: Node, nm: String, player: bool, outfit: Color, accent: Color) -> void:
+func setup(g: Node, nm: String, player: bool, outfit: Color, accent: Color, body_id := "Soldier") -> void:
 	game = g
 	display_name = nm
 	is_player = player
@@ -99,7 +99,7 @@ func setup(g: Node, nm: String, player: bool, outfit: Color, accent: Color) -> v
 	shape_node = cs
 	body = Character.new()
 	add_child(body)
-	body.build(outfit, accent, [Color(0.95, 0.78, 0.62), Color(0.78, 0.56, 0.4), Color(0.5, 0.34, 0.24)][nm.hash() % 3])
+	body.build(outfit, accent, [Color(0.95, 0.78, 0.62), Color(0.78, 0.56, 0.4), Color(0.5, 0.34, 0.24)][nm.hash() % 3], body_id)
 	body.hold("pickaxe")
 
 
@@ -129,6 +129,15 @@ func height_above_ground() -> float:
 func _physics_process(delta: float) -> void:
 	if state == State.DEAD:
 		return
+	if not game.profile:
+		_tick(delta)
+		return
+	var t0 := Time.get_ticks_usec()
+	_tick(delta)
+	game.prof_add("actor", Time.get_ticks_usec() - t0)
+
+
+func _tick(delta: float) -> void:
 	fire_cd = maxf(fire_cd - delta, 0.0)
 	bloom = move_toward(bloom, 0.0, delta * 2.2)
 	if emote != "":
@@ -249,6 +258,14 @@ func _zip_step(delta: float) -> void:
 		_combat(delta)
 
 
+func deploy_glider() -> void:
+	## Open the glider early (it opens by itself at GLIDER_HEIGHT).
+	if state != State.SKYDIVE:
+		return
+	state = State.GLIDE
+	game.sfx("glide", global_position)
+
+
 func jump_from_blimp() -> void:
 	if state != State.BLIMP:
 		return
@@ -317,7 +334,7 @@ func _ground_move(delta: float) -> void:
 			return
 	in_jump = false
 	var was_air := not is_on_floor()
-	if not was_air and not sliding:
+	if not was_air and not sliding and is_on_wall():           # only after running into something
 		_step_up(Vector3(velocity.x, 0, velocity.z))
 	move_and_slide()
 	if is_on_floor():
@@ -876,8 +893,23 @@ func _swing_pickaxe() -> void:
 		game.structures.pickaxe_hit(self, hitp)
 
 
+const FIRST_SHOT_REST := 0.45             # seconds without firing before the next shot is a perfect first shot
+var last_shot_t := -99.0
+
+
+func first_shot_ready(d: Dictionary) -> bool:
+	## First-shot accuracy: a single-bullet gun fired from a standstill after a short pause goes dead centre.
+	if int(d.get("pellets", 1)) != 1 or d.get("rocket", false) or not is_on_floor():
+		return false
+	if Vector2(velocity.x, velocity.z).length() > 1.0:
+		return false
+	return game.match_time - last_shot_t > FIRST_SHOT_REST and bloom < 0.05
+
+
 func spread_deg(d: Dictionary) -> float:
 	## The weapon's current cone: wider moving, in the air and after rapid fire; tighter crouched.
+	if first_shot_ready(d):
+		return 0.0
 	var moving := Vector2(velocity.x, velocity.z).length() > 1.0
 	return d.spread * (1.35 if moving else 1.0) * (1.6 if not is_on_floor() else 1.0) * (0.7 if crouched else 1.0) * (1.0 + bloom) * spread_mul
 
@@ -888,6 +920,7 @@ func _shoot(it: Dictionary, d: Dictionary) -> void:
 	var from := eye()
 	var moving := Vector2(velocity.x, velocity.z).length() > 1.0
 	var spread := deg_to_rad(spread_deg(d))
+	last_shot_t = game.match_time
 	bloom = minf(bloom + float(d.get("bloom", 0.0)), 1.5)
 	var base := aim_dir()
 	if is_player:
@@ -939,7 +972,7 @@ func _throw(it: Dictionary, d: Dictionary) -> void:
 # ----------------------------------------------------------------------------- damage
 
 func hit(amount: float, attacker: Actor, bypass_shield: bool, from: Vector3) -> void:
-	if state == State.DEAD or state == State.BLIMP or amount <= 0.0:
+	if state == State.DEAD or state == State.BLIMP or amount <= 0.0 or game.warming_up():
 		return
 	stop_emote()
 	if attacker != null and attacker != self:

@@ -214,7 +214,37 @@ func raw_height(p: Vector2) -> float:
 	return h
 
 
+var _grid := PackedFloat32Array()          # the baked collision height field, once the game hands it over
+var _gn := 0
+var _gcell := 2.5
+var _ghalf := 0.0
+
+
+func use_baked_heights(shape: HeightMapShape3D, cell: float) -> void:
+	## In the game, heights come from the island's collision height field: a lookup instead of the full formula
+	## (which runs hills, plateaus, the river and noise for every call), and it matches what players stand on.
+	_grid = shape.map_data
+	_gn = shape.map_width
+	_gcell = cell
+	_ghalf = (_gn - 1) * cell / 2.0
+
+
 func height(x: float, z: float) -> float:
+	if _gn == 0:
+		return height_exact(x, z)
+	var gx := clampf((x + _ghalf) / _gcell, 0.0, _gn - 1.001)
+	var gz := clampf((z + _ghalf) / _gcell, 0.0, _gn - 1.001)
+	var i := int(gx)
+	var j := int(gz)
+	var fx := gx - i
+	var fz := gz - j
+	var k := j * _gn + i
+	var h0 := lerpf(_grid[k], _grid[k + 1], fx)
+	var h1 := lerpf(_grid[k + _gn], _grid[k + _gn + 1], fx)
+	return lerpf(h0, h1, fz)
+
+
+func height_exact(x: float, z: float) -> float:
 	var p := Vector2(x, z)
 	var h := raw_height(p)
 	for zone in [[village, 62.0, LAND], [yard, 64.0, LAND], [farm, 62.0, LAND + 0.3]]:
@@ -245,6 +275,8 @@ func in_yard(p: Vector2, margin := 0.0) -> bool:
 func water_surface(x: float, z: float) -> float:
 	## Height of the water surface here, or -1000 where there is none (sea, lake and river).
 	var h := height(x, z)
+	if h > LAKE_LEVEL + 0.05:
+		return -1000.0                              # no water anywhere stands higher than the lake
 	var best := -1000.0
 	if h < 0.0:
 		best = 0.0
