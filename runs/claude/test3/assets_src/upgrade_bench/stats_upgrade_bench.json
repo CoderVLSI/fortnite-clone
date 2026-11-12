@@ -1,0 +1,40 @@
+{
+ "asset": "upgrade_bench",
+ "triangles": 1380,
+ "budget": 6000,
+ "per_object": {
+  "bench_wood": 704,
+  "bench_glow": 12,
+  "bench_gold": 80,
+  "bench_metal": 392,
+  "bench_board": 132,
+  "bench_sign": 60
+ },
+ "dimensions_m": [
+  1.8,
+  0.942,
+  1.86
+ ],
+ "min": [
+  -0.9,
+  -0.542,
+  0.0
+ ],
+ "max": [
+  0.9,
+  0.4,
+  1.86
+ ],
+ "objects": 6,
+ "materials": [
+  "mat_bench_wood",
+  "mat_bench_wood_dark",
+  "mat_gold",
+  "mat_gold_glow",
+  "mat_handle_red",
+  "mat_pegboard",
+  "mat_steel",
+  "mat_steel_dark"
+ ],
+ "problems": []
+}

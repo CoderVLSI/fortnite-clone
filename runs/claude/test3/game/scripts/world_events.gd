@@ -183,7 +183,7 @@ func _build_benches() -> void:
 	for p in [T.village + Vector2(9, 7), T.yard + Vector2(-8, 12), T.farm + Vector2(10, -6), T.snow_town + Vector2(7, 4),
 			T.desert_town + Vector2(-7, 5), T.depot + Vector2(0, 16), T.west_hamlet + Vector2(6, -5), T.east_cove + Vector2(-6, 6)]:
 		var spot := _dry_spot(p)
-		var n := Models.make("bench")
+		var n := Models.make("upgrade_bench")
 		add_child(n)
 		n.global_position = spot
 		n.rotation.y = atan2(p.x - spot.x, p.y - spot.z) + game.rng.randf_range(-0.3, 0.3)
@@ -343,6 +343,7 @@ func _physics_process(delta: float) -> void:
 			var dx := Vector2(a.global_position.x - p.pos.x, a.global_position.z - p.pos.z).length()
 			if dx < 1.3 and absf(a.global_position.y - p.pos.y) < 0.9:
 				a.launch(PAD_LAUNCH)
+				game.stats["pad_launches"] = game.stats.get("pad_launches", 0) + 1
 				cooldown[a.get_instance_id()] = game.match_time + 1.5
 				game.sfx("launch", p.pos)
 				break
@@ -484,6 +485,7 @@ func zip_near(a: Actor) -> Variant:
 
 
 func _rift(a: Actor) -> void:
+	game.stats["rifts_used"] = game.stats.get("rifts_used", 0) + 1
 	cooldown[a.get_instance_id()] = game.match_time + 3.0
 	var p := a.global_position
 	_puff(p + Vector3(0, 1.0, 0))

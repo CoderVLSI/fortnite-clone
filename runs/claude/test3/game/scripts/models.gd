@@ -18,6 +18,9 @@ static func make(id: String) -> Node3D:
 		"smg", "tactical_shotgun", "burst_rifle", "hunting_rifle":
 			if not ResourceLoader.exists("res://assets/%s.glb" % id):
 				return _variant(id)               # no stage 1 model yet: recoloured copy of an existing gun
+		"upgrade_bench":
+			if not ResourceLoader.exists("res://assets/upgrade_bench.glb"):
+				return _procedural("bench")       # the Blender model is missing: the code-built bench
 	if not _cache.has(id):
 		_cache[id] = load("res://assets/%s.glb" % id)
 	var n: Node3D = _cache[id].instantiate()

@@ -59,6 +59,8 @@ var build_next := 0.0                   # earliest time for the next piece
 var cover_until := 0.0                  # sheltering behind a wall it just built
 var harvest_e = null                    # the tree or rock it is gathering from
 var ally_of: Actor = null               # a hired character: fights for this player and follows them
+var rift_next := 0.0
+var shortcut = null                     # a rift or zip line end being walked to: {kind, pos, zip, end}
 var harvest_search := 0.0               # next time it may look for one (the search walks every tree and rock)
 
 
@@ -171,6 +173,8 @@ func _ground(delta: float) -> void:
 	if a.using > 0.0:
 		return
 	if mode == "harvest" and _chop():
+		return
+	if shortcut != null and _take_shortcut():
 		return
 	if has_goal:
 		_follow(delta)
@@ -313,6 +317,7 @@ func _decide() -> void:
 		mode = "storm"
 		if not has_goal or s.outside_next(goal) > -3.0 or _avoided(goal):
 			_set_goal(_safe_point(0.6))
+		_shortcut(pos)
 		return
 	# 2. fight what we can see
 	if target != null and target.alive() and game.match_time - target_seen < 1.2:
@@ -863,6 +868,71 @@ func _debug_loot() -> void:
 	for it in a.slots:
 		inv.append(("%s(%d+%d)" % [it.id, it.get("loaded", 0), int(a.ammo[Items.def(it).ammo]) if Items.def(it).kind == "weapon" else 0]) if it != null else "-")
 	print("LOOTDBG %.0f %s inv=%s %s ok_kinds=%s" % [game.match_time, a.display_name, inv, r, kinds])
+
+
+func _shortcut(pos: Vector3) -> void:
+	## A long way to go: a launch pad from the pocket, a rift close by, or a zip line heading the right way.
+	if a.state != Actor.State.GROUND or a.zip != null:
+		return
+	var far := Vector2(goal.x - pos.x, goal.z - pos.z).length()
+	if far < 120.0:
+		shortcut = null
+		return
+	if shortcut != null:
+		return
+	var pad_i := a.find_item("launch_pad")
+	if pad_i >= 0:                                           # drop a pad underfoot and step on it
+		var at := pos + Vector3(-sin(a.aim_yaw), 0, -cos(a.aim_yaw)) * 2.2
+		var res: Dictionary = game.ray(at + Vector3(0, 2.0, 0), at - Vector3(0, 4.0, 0), a, 1)
+		if not res.is_empty() and (res.normal as Vector3).y > 0.7:
+			game.events.place_pad(res.position)
+			a.slots[pad_i].count -= 1
+			if a.slots[pad_i].count <= 0:
+				a.slots[pad_i] = null
+			drop_target = goal
+			shortcut = {"kind": "pad", "pos": res.position, "t0": game.match_time}
+			return
+	for r in game.events.rifts:
+		if far > 160.0 and game.match_time > rift_next and pos.distance_to(r.pos) < 45.0:
+			rift_next = game.match_time + 60.0               # one rift a minute: they only lift you about 110 m
+			drop_target = goal
+			shortcut = {"kind": "rift", "pos": r.pos, "t0": game.match_time}
+			return
+	for z in game.events.zips:
+		for end in [0.0, 1.0]:
+			var p: Vector3 = game.events.cable_point(z, end)
+			var other: Vector3 = game.events.cable_point(z, 1.0 - end)
+			if p.y - game.terrain.height(p.x, p.z) > 6.0:
+				continue                                        # an end up on a tower deck
+			var ground := Vector3(p.x, game.terrain.height(p.x, p.z), p.z)
+			if pos.distance_to(ground) < 30.0 and Vector2(goal.x - other.x, goal.z - other.z).length() < far - 50.0:
+				shortcut = {"kind": "zip", "pos": ground, "zip": z, "end": end, "t0": game.match_time}
+				return
+
+
+func _take_shortcut() -> bool:
+	## Walk to the rift, pad or zip line end; true while that is what the bot is doing.
+	var p: Vector3 = shortcut.pos
+	if a.state != Actor.State.GROUND or game.match_time - float(shortcut.t0) > 25.0:
+		shortcut = null
+		return false
+	if shortcut.kind == "zip":
+		var zn = game.events.zip_near(a)
+		if zn != null:
+			a.start_zip(zn[0], zn[1])
+			game.stats["zip_rides"] = game.stats.get("zip_rides", 0) + 1
+			shortcut = null
+			return true
+	var to := p - a.global_position
+	to.y = 0
+	if to.length() < 0.6 and shortcut.kind != "zip":
+		a.in_move = Vector2(0, 0.4)                          # step onto it
+		return true
+	if not has_goal or goal.distance_to(p) > 1.0:
+		has_goal = false
+		_set_goal(p)
+	_follow(get_physics_process_delta_time())
+	return true
 
 
 func _follow_owner(pos: Vector3) -> void:

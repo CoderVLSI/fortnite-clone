@@ -13,3 +13,9 @@ Same conventions as the stage 1 guns: barrel along -Y, origin at the grip, separ
 
 Build one: `python runs/claude/test3/assets_src/smg/build_smg.py` (writes the .blend, .glb, preview and stats next to it).
 The .glb files are copied into `runs/claude/test3/game/assets/`.
+
+## Upgrade bench
+
+`upgrade_bench/` - the workbench in every town where weapons are upgraded with gold: plank top with metal corner caps,
+a vise, an anvil, a pegboard with tools, a tray of gold bars, a glowing gold strip along the front and an arrow sign.
+1,380 triangles, 1.8 m wide. Origin on the floor at the middle, working side facing -Y (+Z in Godot).
