@@ -48,6 +48,8 @@ var movetest := false
 var poses := false
 var eventtest := false
 var crosshairs := false
+var soundtest := false
+var audio: GameAudio
 
 
 func _ready() -> void:
@@ -60,6 +62,7 @@ func _ready() -> void:
 		if a == "--poses": poses = true
 		if a == "--eventtest": eventtest = true
 		if a == "--crosshairs": crosshairs = true
+		if a == "--soundtest": soundtest = true
 		if a.begins_with("--seed="): seed_v = int(a.get_slice("=", 1))
 		if a.begins_with("--shots="):
 			shots_dir = a.get_slice("=", 1)
@@ -71,6 +74,9 @@ func _ready() -> void:
 	add_child(island)
 	fx_root = Node3D.new()
 	add_child(fx_root)
+	audio = GameAudio.new()
+	add_child(audio)
+	audio.setup(self)
 	_setup_doors()
 	structures = Structures.new()
 	add_child(structures)
@@ -117,6 +123,8 @@ func _ready() -> void:
 		var t := preload("res://scripts/selftest.gd").new()
 		add_child(t)
 		t.setup(self)
+	if soundtest:
+		_run_soundtest()
 	if autotest:
 		Engine.time_scale = 8.0
 		Engine.max_physics_steps_per_frame = 16
@@ -380,6 +388,8 @@ func _check_win() -> void:
 		print("T=%d alive=%d landed=%d armed=%d pickups_left=%d modes=%s storm r=%.0f" % [int(match_time), n, landed, armed, pickups.size(), modes, storm.radius])
 	if n <= 1:
 		over = true
+		if player.alive():
+			sfx("victory", Vector3.INF)
 		for a in actors:
 			if a.alive():
 				winner = a
@@ -416,14 +426,31 @@ func player_aim_point() -> Vector3:
 	return controller.aim_point()
 
 
-func sfx(_id: String, _pos: Vector3) -> void:
-	pass                                                           # the sound pass is a later prompt
+func sfx(id: String, pos: Vector3) -> void:
+	## Sound hook: audio.gd maps the id to a file. Vector3.INF as pos plays it non-positionally.
+	audio.play(id, pos)
+
+
+func _run_soundtest() -> void:
+	## --soundtest: play every mapped id once and report any without a file, then quit.
+	var bad: Array = []
+	for id in GameAudio.SOUNDS:
+		if not audio.has_sound(id):
+			bad.append(id)
+		audio.play(id, Vector3.INF)
+	for l in GameAudio.LOOPS.values():
+		if not ResourceLoader.exists(GameAudio.DIR + l + ".mp3"):
+			bad.append(l)
+	print("SOUNDTEST ", ("all mapped (%d ids)" % GameAudio.SOUNDS.size()) if bad.is_empty() else "MISSING " + str(bad))
+	get_tree().quit()
 
 
 # ----------------------------------------------------------------------------- eliminations
 
 func on_damage_dealt(attacker: Actor, victim: Actor, amount: float, at: Vector3) -> void:
 	stats.damage += amount
+	if attacker == player and attacker != victim:
+		sfx("hit_marker", Vector3.INF)
 	if attacker == player and hud:
 		hud.add_damage_number(at, amount, victim.shield > 0.0, not victim.alive())
 	if victim == player and hud and attacker:
@@ -448,6 +475,8 @@ func on_eliminated(victim: Actor, killer: Actor) -> void:
 	kill_feed.append({"text": text, "time": match_time, "mine": killer == player or victim == player})
 	if kill_feed.size() > 6:
 		kill_feed.pop_front()
+	if killer == player and victim != player:
+		sfx("elimination", Vector3.INF)
 	if victim == player:
 		controller.on_player_eliminated(killer)
 
@@ -527,6 +556,7 @@ func _update_pickups(delta: float) -> void:
 					a.ever_armed = true
 				if a == player and hud:
 					hud.add_pickup_note(p.item)
+					sfx("pickup", Vector3.INF)
 				remove_pickup(p)
 
 
@@ -558,6 +588,7 @@ func open_container(c: Dictionary, _by: Actor) -> void:
 	if c.opened:
 		return
 	c.opened = true
+	sfx("chest_open", c.pos)
 	stats.containers_opened += 1
 	var glow := (c.node as Node3D).get_node_or_null("Glow")
 	if glow:
@@ -634,6 +665,7 @@ func explode(pos: Vector3, pr: Dictionary) -> void:
 			var dmg: float = pr.damage * clampf(1.15 - d / pr.radius, 0.2, 1.0) * (0.5 if a == pr.owner else 1.0)
 			a.hit(dmg, pr.owner, false, pos)
 			on_damage_dealt(pr.owner, a, dmg, a.eye())
+	sfx("explosion", pos)
 	structures.explode(pos, pr.radius, pr.damage * Structures.EXPLOSION_MULT, pr.owner)
 	fx_blast(pos, pr.radius)
 

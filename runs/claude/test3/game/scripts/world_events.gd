@@ -283,6 +283,7 @@ func spawn_drop(at := Vector3.INF) -> Dictionary:
 
 func _land(d: Dictionary) -> void:
 	d.landed = true
+	game.sfx("supply_drop_land", (d.node as Node3D).global_position)
 	d.smoke_until = game.match_time + 12.0
 	var n: Node3D = d.node
 	d.pos = n.global_position

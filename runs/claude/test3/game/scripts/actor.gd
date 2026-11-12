@@ -74,6 +74,7 @@ var last_hit_time := -99.0
 var last_attacker: Actor
 var storm_time := 0.0
 var fall_start := 0.0
+var step_dist := 0.0
 var pickup_cd := 0.0
 
 
@@ -152,6 +153,7 @@ func _physics_process(delta: float) -> void:
 					_air_move(delta, fall, steer, 3.0)
 					if height_above_ground() <= GLIDER_HEIGHT:
 						state = State.GLIDE
+						game.sfx("glide", global_position)
 			State.GLIDE:
 				_air_move(delta, -7.5, 14.0, 4.0)
 				if depth() > SWIM_IN:
@@ -268,6 +270,7 @@ func _ground_move(delta: float) -> void:
 				if crouched:
 					set_crouched(false)
 				velocity.y = JUMP
+				game.sfx("jump", global_position)
 				jump_air_t = 0.0
 		fall_start = global_position.y
 	else:
@@ -287,8 +290,25 @@ func _ground_move(delta: float) -> void:
 				hit((drop - 9.0) * 7.0, null, true, global_position)
 		fall_start = global_position.y
 		jump_air_t = 99.0
+	_audio_steps(delta, was_air)
 	if depth() > SWIM_IN:
 		_enter_water()
+
+
+func _audio_steps(delta: float, was_air: bool) -> void:
+	## Landing thud and a footstep every ~2 m of ground travelled (sound only; cheap early-outs).
+	if not is_on_floor() or not game.audio.enabled:
+		return
+	if was_air:
+		game.sfx("land", global_position)
+		return
+	var hv := Vector2(velocity.x, velocity.z).length()
+	if hv < 1.5 or sliding:
+		return
+	step_dist += hv * delta
+	if step_dist >= (1.6 if crouched else 2.1):
+		step_dist = 0.0
+		game.audio.footstep(self, hv)
 
 
 func _crouch_pressed() -> void:
@@ -445,6 +465,7 @@ func _enter_water() -> void:
 	body.hold("")                                       # the weapon is put away
 	fall_start = global_position.y                      # deep water: no fall damage
 	var s: float = game.terrain.water_surface(global_position.x, global_position.z)
+	game.sfx("splash", global_position)
 	game.fx_splash(Vector3(global_position.x, s, global_position.z), clampf(impact / 10.0, 0.6, 2.5))
 
 
@@ -476,6 +497,10 @@ func _swim_move(delta: float) -> void:
 		foam_t -= delta
 		if foam_t <= 0.0:
 			foam_t = 0.14
+			step_dist += 0.14
+			if step_dist > 1.1:
+				step_dist = 0.0
+				game.sfx("swim", global_position)
 			var back := Vector3(hv.x, 0, hv.y).normalized() * -0.5
 			game.fx_foam(Vector3(global_position.x, surf + 0.03, global_position.z) + back)
 
@@ -661,6 +686,9 @@ func _combat(delta: float) -> void:
 		"weapon":
 			if it.loaded <= 0:
 				start_reload()
+				if reloading <= 0.0 and is_player:
+					game.sfx("empty", global_position)
+					fire_cd = 0.3
 				return
 			_shoot(it, d2)
 			if not d2.auto and is_player:
@@ -689,7 +717,7 @@ func start_reload() -> void:
 	if it.loaded >= d.mag or ammo[d.ammo] <= 0:
 		return
 	reloading = Items.reload_time(it)
-	game.sfx("reload", global_position)
+	game.sfx({"shotgun": "reload_pump", "sniper_rifle": "reload_heavy", "rocket_launcher": "reload_heavy"}.get(it.id, "reload"), global_position)
 
 
 func start_use() -> void:
@@ -726,7 +754,7 @@ func _finish_use() -> void:
 		slots[use_slot] = null
 		_refresh_held()
 	use_slot = -1
-	game.sfx("use", global_position)
+	game.sfx("use_heal" if d.kind == "heal" else "use_shield", global_position)
 
 
 func _swing_pickaxe() -> void:
@@ -798,6 +826,7 @@ func _jitter(dir: Vector3, spread: float) -> Vector3:
 func _throw(it: Dictionary, d: Dictionary) -> void:
 	fire_cd = 0.9
 	var dir := (aim_dir() + Vector3(0, 0.28, 0)).normalized()
+	game.sfx("throw", global_position)
 	game.spawn_grenade(self, eye() + dir * 0.8, dir * 19.0 + velocity * 0.5, d.damage, d.radius)
 	it.count -= 1
 	if it.count <= 0:
@@ -821,6 +850,8 @@ func hit(amount: float, attacker: Actor, bypass_shield: bool, from: Vector3) -> 
 		shield -= s
 		left -= s
 	hp -= left
+	if is_player:
+		game.sfx("hurt", Vector3.INF)
 	if hp <= 0.0:
 		die(attacker if attacker != null else (last_attacker if game.match_time - last_hit_time < 8.0 else null))
 
