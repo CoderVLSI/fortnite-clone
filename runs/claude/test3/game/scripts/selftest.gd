@@ -237,10 +237,11 @@ func _ready() -> void:
 	await frames(2)
 	check("reset restores the whole wall", (ew.edit as Array).is_empty() and (ew.body as Node).get_child_count() == 1 and not through.call(4))
 	check("someone else's piece cannot be edited", not S.begin_edit(game.actors[1], ew))
-	# floor with a hole
+	# floor with a hole (one storey up, so the ground cannot cover the tiles the rays look for)
 	a.build_piece = "floor"
-	a.aim_pitch = 0.0
+	a.aim_pitch = 0.8
 	S.place(a)
+	a.aim_pitch = 0.0
 	var ef = S.pieces.values()[S.pieces.size() - 1]
 	a.build_piece = ""
 	S.begin_edit(a, ef)
@@ -251,6 +252,8 @@ func _ready() -> void:
 	var down0: Dictionary = game.ray(fxf * Vector3(-1, 2, -1), fxf * Vector3(-1, -1, -1), null, 1)
 	var down3: Dictionary = game.ray(fxf * Vector3(1, 2, 1), fxf * Vector3(1, -1, 1), null, 1)
 	check("floor: the cut tile is a hole", (down0.is_empty() or S.lookup(down0.collider, 0) != ef) and not down3.is_empty() and S.lookup(down3.collider, down3.get("shape", 0)) == ef)
+	S.destroy(ef)                          # clear the spot for the checks below
+	await frames(2)
 	# turned ramp
 	a.build_piece = "stairs"
 	a.aim_yaw = PI / 2

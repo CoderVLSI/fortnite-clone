@@ -399,11 +399,11 @@ func terrain_color(p: Vector2, h: float, slope: float) -> Color:
 	var sn := T.snow(p)
 	var de := T.desert(p)
 	if sn > 0.0:
-		var snowc := Color(0.9, 0.93, 0.98).lerp(Color(0.78, 0.84, 0.95), 0.5 + 0.5 * T.n_small.get_noise_2d(p.x * 0.3, p.y * 0.3))
+		var snowc := Color(0.8, 0.84, 0.9).lerp(Color(0.66, 0.73, 0.86), 0.5 + 0.5 * T.n_small.get_noise_2d(p.x * 0.3, p.y * 0.3))
 		c = c.lerp(snowc, sn)
 	if de > 0.0:
 		var dune := 0.5 + 0.5 * sin(p.x * 0.045 + T.n_dune.get_noise_2d(p.x, p.y) * 4.0)
-		var sandc := Color(0.88, 0.76, 0.52).lerp(Color(0.8, 0.64, 0.42), dune * 0.6 + 0.2 * T.n_small.get_noise_2d(p.x, p.y))
+		var sandc := Color(0.82, 0.7, 0.48).lerp(Color(0.74, 0.58, 0.38), dune * 0.6 + 0.2 * T.n_small.get_noise_2d(p.x, p.y))
 		var oasis := 1.0 - smoothstep(14.0, 32.0, T.river_info(p).x)
 		c = c.lerp(sandc.lerp(Color(0.33, 0.55, 0.22), oasis * 0.85), de)
 	# the shoreline
