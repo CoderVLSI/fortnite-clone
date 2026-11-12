@@ -33,6 +33,7 @@ map={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":77)]}
 pickaxe={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":70)]}
 drop_item={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":88)]}
 edit={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":71)]}
+inventory={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":4194306)]}
 emote={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":66)]}
 crouch={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":4194326)]}
 build_wall={"deadzone": 0.2, "events": [Object(InputEventKey,"physical_keycode":81)]}

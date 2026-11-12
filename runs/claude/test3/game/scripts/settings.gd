@@ -10,7 +10,7 @@ const ACTIONS := [
 	["jump", "Jump"], ["sprint", "Sprint"], ["crouch", "Crouch / slide"], ["interact", "Interact / loot"],
 	["reload", "Reload"], ["map", "Map"], ["pickaxe", "Pickaxe"], ["drop_item", "Drop item"],
 	["edit", "Edit building"], ["build_wall", "Build wall"], ["build_floor", "Build floor"],
-	["build_stairs", "Build stairs"], ["build_cone", "Build cone"], ["emote", "Emote wheel"], ["fire", "Fire"], ["aim", "Aim"],
+	["build_stairs", "Build stairs"], ["build_cone", "Build cone"], ["emote", "Emote wheel"], ["inventory", "Inventory"], ["fire", "Fire"], ["aim", "Aim"],
 ]
 const MSAA_VALUES := [0, 2, 4]
 const FPS_VALUES := [30, 60, 120, 0]
