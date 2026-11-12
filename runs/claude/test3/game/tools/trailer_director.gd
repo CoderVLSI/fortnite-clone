@@ -155,6 +155,11 @@ func _ground(p: Vector3) -> float:
 
 func _place(pos: Vector3, look: Vector3) -> void:
 	pos.y = maxf(pos.y, _ground(pos) + 1.2)
+	# never film through a wall, a ramp or a tree: come in front of whatever is in the way
+	var hit: Dictionary = game.ray(look, pos, null, 1)
+	if not hit.is_empty() and look.distance_to(hit.position) > 2.0:
+		pos = hit.position + (look - pos).normalized() * 0.8
+		pos.y = maxf(pos.y, _ground(pos) + 1.0)
 	cam.global_position = cam.global_position.lerp(pos, 0.25) if clip.i > 0 else pos
 	cam.look_at(look)
 
@@ -184,7 +189,7 @@ func _shoot(t: float) -> void:
 		"drop":
 			var n: Node3D = clip.drop.node
 			var p := n.global_position
-			_place(Vector3(clip.drop.pos.x + 22.0, _ground(p) + 6.0, clip.drop.pos.z + 16.0), p)
+			_place(p + Vector3(cos(clip.ang), 0, sin(clip.ang)) * 13.0 + Vector3(0, -5.0, 0), p)      # ride down with it
 		"pov":
 			pass
 	if clip.i >= 2:                                          # the first frames settle the camera
@@ -195,7 +200,8 @@ func _shoot(t: float) -> void:
 	var who_dead: bool = clip.has("who") and clip.kind in ["build", "storm"] and not (clip.who as Actor).alive() and clip.left > 30
 	if clip.left <= 0 or who_dead or (clip.kind == "pov" and not game.player.alive()):
 		clip = {}
-		game.controller.cam.current = false
+		if game.controller and game.controller.cam:
+			game.controller.cam.current = false
 		cam.current = true
 
 
