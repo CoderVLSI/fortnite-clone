@@ -4,7 +4,7 @@
 extends Node3D
 
 const GAME_SCENE := "res://scenes/game.tscn"
-const SKIP_FLAGS := ["--demo", "--autotest", "--buildtest", "--movetest", "--eventtest", "--poses", "--crosshairs"]
+const SKIP_FLAGS := ["--demo", "--autotest", "--buildtest", "--movetest", "--eventtest", "--poses", "--crosshairs", "--soundtest"]
 const SKIP_PREFIXES := ["--shots=", "--summarytest="]
 
 var pivot: Node3D

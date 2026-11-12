@@ -234,6 +234,7 @@ func destroy(e: Dictionary) -> void:
 		weak_entry = null
 		weak.visible = false
 	burst(e.pos + Vector3(0, 1.0, 0), e.color, 10 if e.kind != "level" else 7)
+	game.sfx(game.audio.material_sound("break_", e.mat), e.pos)
 	match e.kind:
 		"tree":
 			var mm: MultiMeshInstance3D = e.mm
@@ -264,6 +265,9 @@ func pickaxe_hit(a: Actor, hit: Dictionary) -> void:
 	if e == null:
 		return
 	var crit: bool = a.is_player and weak_entry == e and weak.visible and weak.global_position.distance_to(hit.position) < 0.55
+	game.sfx(game.audio.material_sound("hit_", e.mat), hit.position)
+	if crit:
+		game.sfx("weak_point", Vector3.INF)
 	if e.kind != "build":
 		var got: int = mini(int(e.yield) * (2 if crit else 1), MAX_MATS - int(a.mats[e.mat]))
 		if got > 0:
