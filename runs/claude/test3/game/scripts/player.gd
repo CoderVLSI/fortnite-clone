@@ -16,6 +16,7 @@ var prompt := ""
 var prompt_target = null
 var zoom := 0.0
 var cam_up := 1.9
+var force_aim := false                   # tests: aim without the mouse button
 var touch_use := false
 var look_entry = null                    # the breakable thing under the crosshair, for the HUD
 var touch: Control                       # on-screen controls, only on touch devices
@@ -256,7 +257,7 @@ func _process(delta: float) -> void:
 	if not a.alive():
 		yaw = lerp_angle(yaw, s.aim_yaw, clampf(delta * 5.0, 0.0, 1.0))
 		pitch = lerpf(pitch, -0.18, clampf(delta * 3.0, 0.0, 1.0))
-	var aiming: bool = a.alive() and not demo and a.build_piece == "" and (Input.is_action_pressed("aim") or (touch != null and touch.aim)) and a.state == Actor.State.GROUND
+	var aiming: bool = a.alive() and (not demo or force_aim) and a.build_piece == "" and (Input.is_action_pressed("aim") or (touch != null and touch.aim) or force_aim) and a.state == Actor.State.GROUND
 	zoom = move_toward(zoom, 1.0 if aiming else 0.0, delta * 7.0)
 	var it = s.item()
 	var scoped: bool = it != null and it.id == "sniper_rifle"

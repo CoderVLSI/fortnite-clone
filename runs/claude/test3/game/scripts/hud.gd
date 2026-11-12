@@ -119,6 +119,8 @@ func _draw() -> void:
 	if game.storm.active and s.alive() and game.storm.outside(s.global_position) > 0.0 and s.state != Actor.State.BLIMP:
 		draw_rect(Rect2(Vector2.ZERO, sz), Color(0.45, 0.15, 0.75, 0.26 + 0.05 * sin(now * 4.0)))
 		txt(Vector2(0, sz.y * 0.2), "YOU ARE IN THE STORM", 26, Color(0.9, 0.75, 1.0), HORIZONTAL_ALIGNMENT_CENTER, sz.x)
+	if scoped(s, ctl):
+		_draw_scope(sz)                            # under the rest of the HUD
 	_draw_world_numbers(ctl.cam, now)
 	_draw_arcs(sz, ctl, now)
 	_draw_compass(sz, ctl.yaw)
@@ -438,14 +440,110 @@ func _draw_target_health(sz: Vector2, ctl: Node, s: Actor) -> void:
 	txt(Vector2(0, r.position.y - 4), "%s   %d / %d" % [label, int(ceil(e.hp)), int(e.max)], 14, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, sz.x)
 
 
+func _spread_px(sz: Vector2, ctl: Node, deg: float) -> float:
+	## How many pixels from the centre a shot at the edge of the cone lands, for the current zoom.
+	var cam: Camera3D = ctl.cam
+	return tan(deg_to_rad(deg)) / tan(deg_to_rad(cam.fov) * 0.5) * sz.y * 0.5
+
+
+func _xline(a: Vector2, b: Vector2, w := 2.0) -> void:
+	draw_line(a, b, Color(0, 0, 0, 0.65), w + 2.0)
+	draw_line(a, b, Color(1, 1, 1, 0.95), w)
+
+
+func _xring(c: Vector2, r: float, w := 2.0) -> void:
+	draw_arc(c, r, 0, TAU, 48, Color(0, 0, 0, 0.6), w + 2.0)
+	draw_arc(c, r, 0, TAU, 48, Color(1, 1, 1, 0.92), w)
+
+
+func _draw_crosshair(sz: Vector2, s: Actor, ctl: Node) -> void:
+	## A reticle per weapon, sized to the weapon's real spread right now.
+	var c := sz / 2
+	if s.state == Actor.State.SWIM:
+		_xring(c, 3.0, 1.5)
+		return
+	if s.build_piece != "" or game.structures.edit_entry != null:
+		draw_rect(Rect2(c - Vector2(5, 5), Vector2(10, 10)), Color(0, 0, 0, 0.6), false, 3.0)
+		draw_rect(Rect2(c - Vector2(5, 5), Vector2(10, 10)), Color(1, 1, 1, 0.95), false, 1.5)
+		return
+	var it = s.item()
+	if it == null:                                  # pickaxe: a small circle
+		_xring(c, 6.0, 1.5)
+		draw_circle(c, 1.5, Color(1, 1, 1, 0.9))
+		return
+	var d: Dictionary = Items.def(it)
+	if d.kind != "weapon":                          # consumables and throwables: a dot
+		draw_circle(c, 3.5, Color(0, 0, 0, 0.6))
+		draw_circle(c, 2.2, Color(1, 1, 1, 0.95))
+		return
+	var gap := maxf(_spread_px(sz, ctl, s.spread_deg(d)), 4.0)
+	match it.id:
+		"shotgun":                                  # a wide ring the size of the pellet spread
+			_xring(c, gap, 2.0)
+			for dv in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
+				_xline(c + dv * (gap - 4.0), c + dv * (gap + 6.0), 2.0)
+			draw_circle(c, 1.6, Color(1, 1, 1, 0.9))
+		"sniper_rifle":
+			if not scoped(s, ctl):
+				draw_circle(c, 2.2, Color(1, 1, 1, 0.95))
+				_xring(c, 9.0, 1.2)
+		"rocket_launcher":                          # a ring with range ticks below
+			_xring(c, 14.0, 2.0)
+			draw_circle(c, 2.0, Color(1, 1, 1, 0.95))
+			for k in 3:
+				_xline(c + Vector2(-6 + k * 1.5, 22 + k * 9), c + Vector2(6 - k * 1.5, 22 + k * 9), 1.5)
+		_:                                          # pistol and rifle: four lines that open with the spread
+			for dv in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
+				_xline(c + dv * gap, c + dv * (gap + 9.0), 2.0)
+			draw_circle(c, 1.6, Color(1, 1, 1, 0.9))
+
+
+func scoped(s: Actor, ctl: Node) -> bool:
+	var it = s.item()
+	return it != null and it.id == "sniper_rifle" and ctl.zoom > 0.85 and s == game.player and s.alive()
+
+
+func _draw_scope(sz: Vector2) -> void:
+	var c := sz / 2
+	var r := sz.y * 0.44
+	var black := Color(0.02, 0.02, 0.03, 1.0)
+	# everything outside the lens is black
+	var pts := PackedVector2Array()
+	for k in 65:
+		var a := TAU * k / 64.0
+		pts.append(c + Vector2(cos(a), sin(a)) * r)
+	draw_rect(Rect2(0, 0, c.x - r + 1, sz.y), black)
+	draw_rect(Rect2(c.x + r - 1, 0, sz.x - c.x - r + 1, sz.y), black)
+	for k in 64:
+		var a0 := TAU * k / 64.0
+		var a1 := TAU * (k + 1) / 64.0
+		var p0 := c + Vector2(cos(a0), sin(a0)) * r
+		var p1 := c + Vector2(cos(a1), sin(a1)) * r
+		var edge := Vector2(p0.x, c.y - r - 2 if p0.y < c.y else c.y + r + 2)
+		var edge2 := Vector2(p1.x, c.y - r - 2 if p1.y < c.y else c.y + r + 2)
+		draw_colored_polygon(PackedVector2Array([p0, p1, edge2, edge]), black)
+	draw_rect(Rect2(c.x - r, 0, r * 2, c.y - r), black)
+	draw_rect(Rect2(c.x - r, c.y + r, r * 2, sz.y - c.y - r), black)
+	draw_arc(c, r, 0, TAU, 96, Color(0.1, 0.1, 0.12), 6.0)
+	# thin cross with mil dots, thicker towards the edge
+	var line := Color(0.05, 0.05, 0.05, 0.95)
+	draw_line(c - Vector2(r, 0), c - Vector2(r * 0.35, 0), line, 4.0)
+	draw_line(c + Vector2(r * 0.35, 0), c + Vector2(r, 0), line, 4.0)
+	draw_line(c + Vector2(0, r * 0.35), c + Vector2(0, r), line, 4.0)
+	draw_line(c - Vector2(r * 0.35, 0), c + Vector2(r * 0.35, 0), line, 1.2)
+	draw_line(c - Vector2(0, r * 0.6), c + Vector2(0, r * 0.35), line, 1.2)
+	for k in range(1, 5):
+		var o := r * 0.08 * k
+		draw_circle(c + Vector2(o, 0), 2.2, line)
+		draw_circle(c - Vector2(o, 0), 2.2, line)
+		draw_circle(c + Vector2(0, o), 2.2, line)
+	draw_circle(c, 1.8, Color(0.9, 0.15, 0.1))
+
+
 func _draw_centre(sz: Vector2, s: Actor, ctl: Node, now: float) -> void:
 	var c := sz / 2
-	if s.alive() and s.state == Actor.State.GROUND:
-		var g = 7.0 + ctl.zoom * -2.0
-		for d in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
-			draw_line(c + d * g, c + d * (g + 9), Color(0, 0, 0, 0.7), 4.0)
-			draw_line(c + d * g, c + d * (g + 9), Color(1, 1, 1, 0.95), 2.0)
-		draw_circle(c, 1.6, Color(1, 1, 1, 0.9))
+	if s.alive() and (s.state == Actor.State.GROUND or s.state == Actor.State.SWIM):
+		_draw_crosshair(sz, s, ctl)
 	# hit marker: white cross, red when it was an elimination
 	var ht := now - hit_time
 	if ht < 0.22:

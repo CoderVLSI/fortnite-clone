@@ -1,0 +1,12 @@
+rifle, standing
+rifle, moving
+rifle, rapid fire
+rifle, crouched
+pistol
+shotgun
+rocket launcher
+pickaxe
+grenade
+build mode
+sniper, hip
+sniper, scoped

@@ -14,9 +14,9 @@ const MAT_COLORS := {"wood": Color(0.85, 0.6, 0.3), "brick": Color(0.88, 0.42, 0
 ## kind: weapon | throwable | heal | shield
 ## Weapons: damage per hit, shots per second, magazine, reload seconds, spread in degrees, effective range in metres.
 const DEFS := {
-	"pistol": {"name": "Pistol", "kind": "weapon", "asset": "pistol", "ammo": "light", "damage": 24.0, "rate": 6.0, "mag": 16, "reload": 1.5, "spread": 1.6, "range": 60.0, "pellets": 1, "auto": false},
+	"pistol": {"name": "Pistol", "kind": "weapon", "asset": "pistol", "ammo": "light", "damage": 24.0, "rate": 6.0, "mag": 16, "reload": 1.5, "spread": 1.6, "range": 60.0, "pellets": 1, "auto": false, "bloom": 0.35},
 	"shotgun": {"name": "Pump Shotgun", "kind": "weapon", "asset": "shotgun", "ammo": "shells", "damage": 10.0, "rate": 0.95, "mag": 5, "reload": 4.2, "spread": 5.5, "range": 28.0, "pellets": 9, "auto": false},
-	"assault_rifle": {"name": "Assault Rifle", "kind": "weapon", "asset": "assault_rifle", "ammo": "medium", "damage": 30.0, "rate": 5.5, "mag": 30, "reload": 2.3, "spread": 1.3, "range": 110.0, "pellets": 1, "auto": true},
+	"assault_rifle": {"name": "Assault Rifle", "kind": "weapon", "asset": "assault_rifle", "ammo": "medium", "damage": 30.0, "rate": 5.5, "mag": 30, "reload": 2.3, "spread": 1.3, "range": 110.0, "pellets": 1, "auto": true, "bloom": 0.2},
 	"sniper_rifle": {"name": "Bolt Sniper", "kind": "weapon", "asset": "sniper_rifle", "ammo": "heavy", "damage": 105.0, "rate": 0.4, "mag": 1, "reload": 2.6, "spread": 0.15, "range": 320.0, "pellets": 1, "auto": false},
 	"rocket_launcher": {"name": "Rocket Launcher", "kind": "weapon", "asset": "rocket_launcher", "ammo": "rockets", "damage": 110.0, "rate": 0.75, "mag": 1, "reload": 3.2, "spread": 0.4, "range": 140.0, "pellets": 1, "auto": false, "rocket": true, "radius": 5.5},
 	"grenade": {"name": "Grenade", "kind": "throwable", "asset": "grenade", "stack": 6, "damage": 100.0, "radius": 5.5},

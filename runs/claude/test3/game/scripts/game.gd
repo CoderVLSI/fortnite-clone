@@ -47,6 +47,7 @@ var buildtest := false
 var movetest := false
 var poses := false
 var eventtest := false
+var crosshairs := false
 
 
 func _ready() -> void:
@@ -58,6 +59,7 @@ func _ready() -> void:
 		if a == "--movetest": movetest = true
 		if a == "--poses": poses = true
 		if a == "--eventtest": eventtest = true
+		if a == "--crosshairs": crosshairs = true
 		if a.begins_with("--seed="): seed_v = int(a.get_slice("=", 1))
 		if a.begins_with("--shots="):
 			shots_dir = a.get_slice("=", 1)
@@ -95,6 +97,10 @@ func _ready() -> void:
 		if sun:
 			sun.shadow_enabled = false
 		get_viewport().msaa_3d = Viewport.MSAA_DISABLED
+	if crosshairs:
+		var ct := preload("res://scripts/crosshairtest.gd").new()
+		add_child(ct)
+		ct.setup(self)
 	if eventtest:
 		var et := preload("res://scripts/eventtest.gd").new()
 		add_child(et)

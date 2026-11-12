@@ -52,7 +52,8 @@ var jump_air_t := 99.0                   # seconds since the last jump, for mant
 var foam_t := 0.0
 var shape_node: CollisionShape3D
 var zip = null                           # {line, t, dir} while riding a zip line
-var launched := false                    # rising from a launch pad
+var launched := false
+var bloom := 0.0                         # extra spread from firing quickly; decays                    # rising from a launch pad
 
 # control inputs, written by the player or the bot brain every physics tick
 var in_move := Vector2.ZERO              # x = right, y = forward, relative to aim_yaw
@@ -125,6 +126,7 @@ func _physics_process(delta: float) -> void:
 	if state == State.DEAD:
 		return
 	fire_cd = maxf(fire_cd - delta, 0.0)
+	bloom = move_toward(bloom, 0.0, delta * 2.2)
 	if mantle_t >= 0.0:
 		_mantle_step(delta)
 	elif zip != null:
@@ -744,12 +746,19 @@ func _swing_pickaxe() -> void:
 		game.structures.pickaxe_hit(self, hitp)
 
 
+func spread_deg(d: Dictionary) -> float:
+	## The weapon's current cone: wider moving, in the air and after rapid fire; tighter crouched.
+	var moving := Vector2(velocity.x, velocity.z).length() > 1.0
+	return d.spread * (1.35 if moving else 1.0) * (1.6 if not is_on_floor() else 1.0) * (0.7 if crouched else 1.0) * (1.0 + bloom) * spread_mul
+
+
 func _shoot(it: Dictionary, d: Dictionary) -> void:
 	it.loaded -= 1
 	fire_cd = 1.0 / d.rate
 	var from := eye()
 	var moving := Vector2(velocity.x, velocity.z).length() > 1.0
-	var spread := deg_to_rad(d.spread * (1.35 if moving else 1.0) * (1.6 if not is_on_floor() else 1.0) * (0.7 if crouched else 1.0)) * spread_mul
+	var spread := deg_to_rad(spread_deg(d))
+	bloom = minf(bloom + float(d.get("bloom", 0.0)), 1.5)
 	var base := aim_dir()
 	if is_player:
 		# aim where the camera looks, then shoot from the eye towards that point
