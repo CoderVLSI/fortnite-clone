@@ -384,6 +384,8 @@ func tip_lines(it: Dictionary) -> Array:
 		"heal", "shield":
 			var what := "health" if d.kind == "heal" else "shield"
 			L.append(["Restores %d %s (up to %d)" % [int(d.amount), what, int(d.cap)], dim])
+			if d.has("shield_amount"):
+				L.append(["and %d shield (up to %d)" % [int(d.shield_amount), int(d.shield_cap)], dim])
 			L.append(["Takes %.1f s to use" % d.use_time, dim])
 		"launcher":
 			L.append(["Place on the ground to launch", dim])

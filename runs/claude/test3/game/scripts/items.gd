@@ -12,26 +12,35 @@ const MAT_NAMES := {"wood": "Wood", "brick": "Brick", "metal": "Metal"}
 const MAT_COLORS := {"wood": Color(0.85, 0.6, 0.3), "brick": Color(0.88, 0.42, 0.32), "metal": Color(0.62, 0.7, 0.82)}
 
 ## kind: weapon | throwable | heal | shield
+## Heals restore `amount` health up to `cap`; if they also have `shield_amount` / `shield_cap` they restore shield too.
+## Weapons with "burst": N fire N shots per trigger pull, `rate` apart, then rest `burst_gap` seconds.
 ## Weapons: damage per hit, shots per second, magazine, reload seconds, spread in degrees, effective range in metres.
 const DEFS := {
 	"pistol": {"name": "Pistol", "kind": "weapon", "asset": "pistol", "ammo": "light", "damage": 24.0, "rate": 6.0, "mag": 16, "reload": 1.5, "spread": 1.6, "range": 60.0, "pellets": 1, "auto": false, "bloom": 0.35},
 	"shotgun": {"name": "Pump Shotgun", "kind": "weapon", "asset": "shotgun", "ammo": "shells", "damage": 10.0, "rate": 0.95, "mag": 5, "reload": 4.2, "spread": 5.5, "range": 28.0, "pellets": 9, "auto": false},
 	"assault_rifle": {"name": "Assault Rifle", "kind": "weapon", "asset": "assault_rifle", "ammo": "medium", "damage": 30.0, "rate": 5.5, "mag": 30, "reload": 2.3, "spread": 1.3, "range": 110.0, "pellets": 1, "auto": true, "bloom": 0.2},
+	"smg": {"name": "SMG", "kind": "weapon", "asset": "smg", "ammo": "light", "damage": 17.0, "rate": 11.0, "mag": 30, "reload": 2.0, "spread": 2.2, "range": 45.0, "pellets": 1, "auto": true, "bloom": 0.27},
+	"tactical_shotgun": {"name": "Tactical Shotgun", "kind": "weapon", "asset": "tactical_shotgun", "ammo": "shells", "damage": 7.0, "rate": 1.6, "mag": 8, "reload": 4.6, "spread": 6.5, "range": 24.0, "pellets": 9, "auto": false},
+	"burst_rifle": {"name": "Burst Rifle", "kind": "weapon", "asset": "burst_rifle", "ammo": "medium", "damage": 27.0, "rate": 14.0, "mag": 30, "reload": 2.4, "spread": 1.0, "range": 100.0, "pellets": 1, "auto": false, "bloom": 0.12, "burst": 3, "burst_gap": 0.4},
 	"sniper_rifle": {"name": "Bolt Sniper", "kind": "weapon", "asset": "sniper_rifle", "ammo": "heavy", "damage": 105.0, "rate": 0.4, "mag": 1, "reload": 2.6, "spread": 0.15, "range": 320.0, "pellets": 1, "auto": false},
 	"rocket_launcher": {"name": "Rocket Launcher", "kind": "weapon", "asset": "rocket_launcher", "ammo": "rockets", "damage": 110.0, "rate": 0.75, "mag": 1, "reload": 3.2, "spread": 0.4, "range": 140.0, "pellets": 1, "auto": false, "rocket": true, "radius": 5.5},
+	"hunting_rifle": {"name": "Hunting Rifle", "kind": "weapon", "asset": "hunting_rifle", "ammo": "heavy", "damage": 86.0, "rate": 0.85, "mag": 1, "reload": 2.2, "spread": 0.35, "range": 180.0, "pellets": 1, "auto": false},
 	"grenade": {"name": "Grenade", "kind": "throwable", "asset": "grenade", "stack": 6, "damage": 100.0, "radius": 5.5},
 	"medkit": {"name": "Med Kit", "kind": "heal", "asset": "medkit", "stack": 3, "amount": 100.0, "use_time": 6.0, "cap": 100.0},
 	"shield_potion": {"name": "Big Shield", "kind": "shield", "asset": "shield_potion", "stack": 3, "amount": 50.0, "use_time": 4.0, "cap": 100.0},
 	"small_shield": {"name": "Small Shield", "kind": "shield", "asset": "small_shield", "stack": 6, "amount": 25.0, "use_time": 2.0, "cap": 50.0},
 	"healing_drink": {"name": "Healing Drink", "kind": "heal", "asset": "healing_drink", "stack": 2, "amount": 50.0, "use_time": 2.5, "cap": 100.0},
+	"bandages": {"name": "Bandages", "kind": "heal", "asset": "bandages", "stack": 15, "amount": 15.0, "use_time": 3.5, "cap": 75.0},
+	"hydro_juice": {"name": "Hydro Juice", "kind": "heal", "asset": "hydro_juice", "stack": 2, "amount": 25.0, "use_time": 2.0, "cap": 100.0, "shield_amount": 25.0, "shield_cap": 100.0},
+	"mega_flask": {"name": "Mega Flask", "kind": "heal", "asset": "mega_flask", "stack": 1, "amount": 100.0, "use_time": 10.0, "cap": 100.0, "shield_amount": 100.0, "shield_cap": 100.0},
 	"launch_pad": {"name": "Launch Pad", "kind": "launcher", "asset": "launch_pad", "stack": 1},
 }
-const WEAPON_IDS := ["pistol", "shotgun", "assault_rifle", "sniper_rifle", "rocket_launcher"]
+const WEAPON_IDS := ["pistol", "shotgun", "assault_rifle", "sniper_rifle", "rocket_launcher", "smg", "tactical_shotgun", "burst_rifle", "hunting_rifle"]
 
 
 static func make(id: String, rarity := 0, count := 1) -> Dictionary:
 	var d: Dictionary = DEFS[id]
-	var fixed := {"shield_potion": 2, "medkit": 1, "small_shield": 1, "healing_drink": 2, "launch_pad": 3}
+	var fixed := {"shield_potion": 2, "medkit": 1, "small_shield": 1, "healing_drink": 2, "launch_pad": 3, "bandages": 0, "hydro_juice": 2, "mega_flask": 4}
 	var it := {"id": id, "rarity": rarity if d.kind == "weapon" else int(fixed.get(id, 0)), "count": count}
 	if d.kind == "weapon":
 		it["loaded"] = d.mag
@@ -66,7 +75,8 @@ static func roll_rarity(rng: RandomNumberGenerator, bonus := 0.0) -> int:
 
 
 static func roll_weapon(rng: RandomNumberGenerator, bonus := 0.0) -> Dictionary:
-	var weights := {"pistol": 26, "shotgun": 24, "assault_rifle": 28, "sniper_rifle": 13, "rocket_launcher": 9}
+	var weights := {"pistol": 26, "shotgun": 24, "assault_rifle": 28, "sniper_rifle": 13, "rocket_launcher": 9,
+		"smg": 17, "tactical_shotgun": 12, "burst_rifle": 14, "hunting_rifle": 9}
 	var total := 0
 	for k in weights: total += weights[k]
 	var pick := rng.randi() % total
@@ -77,14 +87,28 @@ static func roll_weapon(rng: RandomNumberGenerator, bonus := 0.0) -> Dictionary:
 	return make("pistol")
 
 
+static func roll_heal(rng: RandomNumberGenerator, chest := false) -> Dictionary:
+	## A heal for floor loot or a chest: bandages are common, hydro juice uncommon, the mega flask very rare.
+	var r := rng.randf()
+	if r < (0.015 if chest else 0.025): return make("mega_flask")
+	if r < 0.14: return make("hydro_juice")
+	if r < 0.40: return make("bandages", 0, 4 + rng.randi() % 5)
+	if r < 0.60: return make("healing_drink")
+	if r < 0.80: return make("medkit")
+	return make("shield_potion")
+
+
 static func roll_floor(rng: RandomNumberGenerator) -> Dictionary:
 	## What lies on a floor loot spot.
 	var r := rng.randf()
 	if r < 0.50: return roll_weapon(rng)
-	if r < 0.59: return make("medkit")
-	if r < 0.67: return make("shield_potion")
-	if r < 0.75: return make("small_shield", 0, 2)
-	if r < 0.80: return make("healing_drink")
-	if r < 0.86: return make("grenade", 0, 2)
-	if r < 0.89: return make("launch_pad")
+	if r < 0.56: return make("medkit")
+	if r < 0.63: return make("shield_potion")
+	if r < 0.70: return make("small_shield", 0, 2)
+	if r < 0.74: return make("healing_drink")
+	if r < 0.79: return make("bandages", 0, 5 + rng.randi() % 6)
+	if r < 0.82: return make("hydro_juice")
+	if r < 0.825: return make("mega_flask")
+	if r < 0.88: return make("grenade", 0, 2)
+	if r < 0.91: return make("launch_pad")
 	return {"ammo": AMMO_TYPES[rng.randi() % 5]}

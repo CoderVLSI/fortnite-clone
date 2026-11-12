@@ -67,6 +67,7 @@ var aim_yaw := 0.0
 var aim_pitch := 0.0
 
 var fire_cd := 0.0
+var burst_left := 0                      # shots still to come in the burst under way
 var reloading := 0.0
 var using := 0.0
 var use_total := 0.0
@@ -173,8 +174,10 @@ func _physics_process(delta: float) -> void:
 	body.animate(delta, self)
 	if state == State.GROUND and mantle_t < 0.0:
 		_combat(delta)
-	elif using > 0.0:
-		cancel_use()
+	else:
+		burst_left = 0
+		if using > 0.0:
+			cancel_use()
 
 
 func start_emote(name: String) -> void:
@@ -549,6 +552,7 @@ func select(i: int) -> void:
 	build_piece = ""
 	active = i
 	reloading = 0.0
+	burst_left = 0
 	cancel_use()
 	fire_cd = maxf(fire_cd, 0.25)
 	_refresh_held()
@@ -642,6 +646,7 @@ func drop_slot(i: int) -> void:
 	game.spawn_pickup(it, global_position + Vector3(-sin(aim_yaw), 0.4, -cos(aim_yaw)) * 1.4)
 	if i == active:
 		reloading = 0.0
+		burst_left = 0
 		cancel_use()
 		_refresh_held()
 
@@ -668,6 +673,10 @@ func best_weapon_slot(dist: float) -> int:
 		var score = 1.0 + it.rarity * 0.15
 		match it.id:
 			"shotgun": score *= 3.0 if dist < 12.0 else (1.0 if dist < 25.0 else 0.1)
+			"tactical_shotgun": score *= 3.0 if dist < 12.0 else (1.0 if dist < 22.0 else 0.1)
+			"smg": score *= 2.6 if dist < 22.0 else (1.2 if dist < 45.0 else 0.4)
+			"burst_rifle": score *= 2.1 if (dist >= 12.0 and dist < 85.0) else 1.0
+			"hunting_rifle": score *= 2.6 if dist > 45.0 else (0.6 if dist > 20.0 else 0.2)
 			"pistol": score *= 1.3 if dist < 30.0 else 0.6
 			"assault_rifle": score *= 2.2 if dist < 90.0 else 1.0
 			"sniper_rifle": score *= 3.0 if dist > 55.0 else (0.5 if dist > 20.0 else 0.2)
@@ -708,7 +717,7 @@ func _combat(delta: float) -> void:
 		return
 	if build_piece != "":
 		return                                         # placing pieces is driven by the controller
-	if not in_fire or fire_cd > 0.0:
+	if fire_cd > 0.0 or not (in_fire or burst_left > 0):      # a burst under way finishes without the trigger
 		return
 	if it == null:
 		_swing_pickaxe()
@@ -723,6 +732,10 @@ func _combat(delta: float) -> void:
 					fire_cd = 0.3
 				return
 			_shoot(it, d2)
+			if d2.has("burst"):
+				burst_left = burst_left - 1 if burst_left > 0 else int(d2.burst) - 1
+				if burst_left <= 0:
+					fire_cd = float(d2.burst_gap)
 			if not d2.auto and is_player:
 				in_fire = false
 		"throwable":
@@ -748,6 +761,7 @@ func start_reload() -> void:
 	var d: Dictionary = Items.def(it)
 	if it.loaded >= d.mag or ammo[d.ammo] <= 0:
 		return
+	burst_left = 0
 	reloading = Items.reload_time(it)
 	game.sfx({"shotgun": "reload_pump", "sniper_rifle": "reload_heavy", "rocket_launcher": "reload_heavy"}.get(it.id, "reload"), global_position)
 
@@ -757,13 +771,18 @@ func start_use() -> void:
 	if it == null or using > 0.0:
 		return
 	var d: Dictionary = Items.def(it)
-	if d.kind == "heal" and hp >= d.cap:
-		return
-	if d.kind == "shield" and shield >= d.cap:
+	if not _needs_use(d):
 		return
 	using = d.use_time
 	use_total = d.use_time
 	use_slot = active
+
+
+func _needs_use(d: Dictionary) -> bool:
+	## Would this consumable do anything now? A heal that also gives shield counts if either is short.
+	if d.kind == "shield":
+		return shield < d.cap
+	return hp < d.cap or (d.has("shield_amount") and shield < d.shield_cap)
 
 
 func cancel_use() -> void:
@@ -778,7 +797,9 @@ func _finish_use() -> void:
 	var it: Dictionary = slots[use_slot]
 	var d: Dictionary = Items.def(it)
 	if d.kind == "heal":
-		hp = minf(hp + d.amount, d.cap)
+		hp = maxf(hp, minf(hp + d.amount, d.cap))                      # never lowers hp that is above the cap
+		if d.has("shield_amount"):
+			shield = maxf(shield, minf(shield + d.shield_amount, d.shield_cap))
 	else:
 		shield = minf(shield + d.amount, d.cap)
 	it.count -= 1

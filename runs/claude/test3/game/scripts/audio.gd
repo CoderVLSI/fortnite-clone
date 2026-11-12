@@ -9,11 +9,15 @@ const POOL_2D := 8
 const DIR := "res://sounds/"
 const NO_POS := Vector3.INF
 
-## id -> {f: [files], db: volume, d: max distance (m), u: unit size, ...}
+## id -> {f: [files], db: volume, d: max distance (m), u: unit size, p: pitch multiplier, ...}
 const SOUNDS := {
 	"pistol": {"f": ["shot_pistol"], "db": 0.0, "d": 150.0, "u": 12.0},
 	"shotgun": {"f": ["shot_shotgun"], "db": 2.0, "d": 150.0, "u": 14.0},
 	"assault_rifle": {"f": ["shot_rifle"], "db": 0.0, "d": 150.0, "u": 12.0},
+	"smg": {"f": ["shot_pistol"], "db": -2.0, "d": 130.0, "u": 10.0, "p": 1.3},
+	"tactical_shotgun": {"f": ["shot_shotgun"], "db": 1.0, "d": 140.0, "u": 13.0, "p": 1.15},
+	"burst_rifle": {"f": ["shot_rifle"], "db": -1.0, "d": 150.0, "u": 12.0, "p": 1.12},
+	"hunting_rifle": {"f": ["shot_sniper"], "db": 2.0, "d": 170.0, "u": 16.0, "p": 1.18},
 	"sniper_rifle": {"f": ["shot_sniper"], "db": 3.0, "d": 180.0, "u": 18.0},
 	"rocket_launcher": {"f": ["shot_rocket"], "db": 2.0, "d": 150.0, "u": 14.0},
 	"explosion": {"f": ["explosion"], "db": 4.0, "d": 200.0, "u": 20.0},
@@ -148,7 +152,7 @@ func play(id: String, pos := NO_POS) -> void:
 	var s := _stream(file)
 	if s == null:
 		return
-	var pitch := randf_range(0.92, 1.08)
+	var pitch := randf_range(0.92, 1.08) * float(def.get("p", 1.0))      # "p": base pitch of this id
 	if pos == NO_POS or def.get("ui", false):
 		var now := Time.get_ticks_msec()
 		if now - int(last_ms.get(id, -1000)) < 60:

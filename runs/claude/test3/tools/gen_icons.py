@@ -50,6 +50,14 @@ ICONS = {
     "small_shield": (None, "a small round glass bottle of glowing light blue liquid with a cork, a little shield potion"),
     "healing_drink": (None, "a tall glass bottle of glowing green healing drink with a cork and a white label with a red cross"),
     "launch_pad": (None, "a round blue launch pad platform with yellow upward chevron arrows on top, seen from above at an angle"),
+    # items added later have no stage 1 asset: their reference is a render of the in-game model, in tools/refs/ ("refs/" prefix)
+    "smg": ("refs/smg", "this compact submachine gun: dark blue-grey body, orange magazine, short barrel"),
+    "tactical_shotgun": ("refs/tactical_shotgun", "this tactical shotgun: dark grey body, brown stock, orange pump grip, dark barrels"),
+    "burst_rifle": ("refs/burst_rifle", "this burst rifle: green body, grey magazine, small sight, long barrel"),
+    "hunting_rifle": ("refs/hunting_rifle", "this hunting rifle without a scope: wooden brown stock and body, dark barrel, small bipod"),
+    "bandages": ("refs/bandages", "these two rolls of white gauze bandage with red bands"),
+    "hydro_juice": ("refs/hydro_juice", "this clear cup of glowing cyan blue drink with a white lid and a yellow straw"),
+    "mega_flask": ("refs/mega_flask", "this big round glass flask of glowing green liquid with a gold collar, cork and a gold ring handle"),
     "supply_drop": ("supply_drop", "this olive armoured supply crate with glowing blue strips, hanging under an orange and cream striped parachute"),
 }
 
@@ -58,6 +66,10 @@ def reference(asset):
     """The first view (side) of the asset's 4-view preview, as a PNG data URL."""
     if asset is None:
         return None
+    if asset.startswith("refs/"):
+        buf = io.BytesIO()
+        Image.open(os.path.join(HERE, asset + ".png")).convert("RGB").resize((512, 512)).save(buf, "PNG")
+        return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
     im = Image.open(os.path.join(TEST1, asset, "preview_%s.png" % asset)).convert("RGB")
     w, h = im.size
     n = max(1, round(w / h))
