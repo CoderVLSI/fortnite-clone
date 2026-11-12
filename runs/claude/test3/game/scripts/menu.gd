@@ -14,6 +14,7 @@ var lobby_box: Control
 var settings: Control
 var ready_btn: Button
 var back_btn: Button
+var bots_btn: Button
 var countdown_label: Label
 var countdown := -1.0
 var shot_dir := ""
@@ -153,6 +154,10 @@ func _build_ui() -> void:
 	lobby_box.visible = false
 	lobby_box.add_child(MenuUI.label("LOBBY", 70, Color.WHITE))
 	lobby_box.add_child(MenuUI.label("Players: 25 (you + 24 bots)", 28, MenuUI.ACCENT))
+	bots_btn = MenuUI.button("", 22, Vector2(200, 46))
+	bots_btn.pressed.connect(_cycle_difficulty)
+	lobby_box.add_child(bots_btn)
+	_refresh_bots_btn()
 	lobby_box.add_child(MenuUI.label("Solo  -  last one standing wins", 20, Color(0.9, 0.93, 1.0)))
 	lobby_box.add_child(MenuUI.spacer(24))
 	ready_btn = MenuUI.button("READY", 44, Vector2(420, 96))
@@ -190,12 +195,25 @@ func _show_main() -> void:
 	main_box.visible = true
 
 
+func _refresh_bots_btn() -> void:
+	bots_btn.text = "Bots: " + Settings.difficulty_label(Settings.bot_difficulty)
+
+
+func _cycle_difficulty() -> void:
+	var i: int = Settings.DIFFICULTIES.find(Settings.bot_difficulty)
+	Settings.bot_difficulty = Settings.DIFFICULTIES[(i + 1) % Settings.DIFFICULTIES.size()]
+	Settings.save_file()
+	_refresh_bots_btn()
+
+
 func _show_lobby() -> void:
 	main_box.visible = false
 	lobby_box.visible = true
 	countdown_label.text = ""
 	ready_btn.disabled = false
 	back_btn.disabled = false
+	bots_btn.disabled = false
+	_refresh_bots_btn()
 
 
 func _show_settings() -> void:
@@ -206,6 +224,7 @@ func _show_settings() -> void:
 func _on_ready() -> void:
 	ready_btn.disabled = true
 	back_btn.disabled = true
+	bots_btn.disabled = true
 	ready_btn.text = "READY!"
 	countdown = 3.0
 	countdown_label.text = "MATCH STARTS IN  3"
@@ -224,6 +243,9 @@ func _run_shots() -> void:
 	settings.show_tab(2)
 	await get_tree().create_timer(0.3).timeout
 	_save("menu_settings_graphics")
+	settings.show_tab(4)
+	await get_tree().create_timer(0.3).timeout
+	_save("menu_settings_gameplay")
 	settings.close()
 	_show_lobby()
 	await get_tree().create_timer(0.3).timeout

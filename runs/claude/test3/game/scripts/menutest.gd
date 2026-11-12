@@ -32,6 +32,7 @@ func _run() -> void:
 	_save("menu_pause")
 	game.pause_menu.resume()
 	await _wait(0.3)
+	print("SUMMARYTEST bot_difficulty=%s valid=%s" % [Settings.bot_difficulty, Settings.bot_difficulty in Settings.DIFFICULTIES])
 	print("SUMMARYTEST pause: paused_and_frozen=%s resumed=%s" % [paused_ok, not get_tree().paused])
 	# the player lands some hits, then every bot is eliminated
 	var n := 0

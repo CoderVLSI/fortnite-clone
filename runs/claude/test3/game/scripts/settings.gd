@@ -1,5 +1,5 @@
 ## Autoload "Settings": player options saved to user://settings.cfg and applied on start.
-## Mouse sensitivity, invert Y, key bindings, graphics (fullscreen, shadows, MSAA, render scale, FPS cap), master volume.
+## Mouse sensitivity, invert Y, key bindings, graphics (fullscreen, shadows, MSAA, render scale, FPS cap), master volume, bot difficulty.
 extends Node
 
 const PATH := "user://settings.cfg"
@@ -14,6 +14,7 @@ const ACTIONS := [
 ]
 const MSAA_VALUES := [0, 2, 4]
 const FPS_VALUES := [30, 60, 120, 0]
+const DIFFICULTIES := ["easy", "normal", "sweaty"]
 
 var sensitivity := 1.0                   # multiplier on BASE_SENS
 var invert_y := false
@@ -23,9 +24,12 @@ var msaa := 2
 var render_scale := 100
 var fps_limit := 0
 var volume := 1.0
+var bot_difficulty := "normal"           # one of DIFFICULTIES; --difficulty=<value> overrides it for a run without saving
 var bindings := {}                       # action -> {"k": physical keycode} or {"m": mouse button}
 var defaults := {}                       # action -> Array[InputEvent], captured from project.godot
 var _sun: DirectionalLight3D
+var _saved_difficulty := "normal"        # what the file holds while a --difficulty= override is active
+var _cli_difficulty := ""
 
 
 func _ready() -> void:
@@ -33,8 +37,16 @@ func _ready() -> void:
 	for a in ACTIONS:
 		defaults[a[0]] = InputMap.action_get_events(a[0]).duplicate()
 	load_file()
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--difficulty=") and a.get_slice("=", 1) in DIFFICULTIES:
+			_cli_difficulty = a.get_slice("=", 1)
+			bot_difficulty = _cli_difficulty
 	apply_all()
 	get_tree().node_added.connect(_on_node_added)
+
+
+static func difficulty_label(d: String) -> String:
+	return d.capitalize() if d in DIFFICULTIES else "Normal"
 
 
 func sens() -> float:
@@ -53,6 +65,9 @@ func load_file() -> void:
 	var cf := ConfigFile.new()
 	if cf.load(PATH) != OK:
 		return
+	var d := str(cf.get_value("gameplay", "bot_difficulty", "normal"))
+	bot_difficulty = d if d in DIFFICULTIES else "normal"
+	_saved_difficulty = bot_difficulty
 	sensitivity = clampf(float(cf.get_value("controls", "sensitivity", 1.0)), 0.1, 4.0)
 	invert_y = bool(cf.get_value("controls", "invert_y", false))
 	fullscreen = bool(cf.get_value("graphics", "fullscreen", false))
@@ -82,6 +97,12 @@ func save_file() -> void:
 	cf.set_value("graphics", "render_scale", render_scale)
 	cf.set_value("graphics", "fps_limit", fps_limit)
 	cf.set_value("audio", "volume", volume)
+	if _cli_difficulty != "" and bot_difficulty == _cli_difficulty:
+		cf.set_value("gameplay", "bot_difficulty", _saved_difficulty)
+	else:
+		_saved_difficulty = bot_difficulty
+		_cli_difficulty = ""
+		cf.set_value("gameplay", "bot_difficulty", bot_difficulty)
 	cf.save(PATH)
 
 

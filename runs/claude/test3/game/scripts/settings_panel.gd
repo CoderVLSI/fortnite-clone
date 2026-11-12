@@ -34,6 +34,7 @@ func _ready() -> void:
 	_build_keys()
 	_build_graphics()
 	_build_audio()
+	_build_gameplay()
 	hint = MenuUI.label("", 16, MenuUI.DIM, HORIZONTAL_ALIGNMENT_CENTER)
 	col.add_child(hint)
 	var back := MenuUI.button("Back", 22, Vector2(200, 48))
@@ -206,3 +207,15 @@ func _build_audio() -> void:
 		Settings.volume = x / 100.0
 		Settings.apply_volume())
 	_row(p, "Master volume", v[0], v[1])
+
+
+func _build_gameplay() -> void:
+	var p := _page("Gameplay")
+	p.add_child(MenuUI.spacer(10))
+	var names: Array = []
+	for d in Settings.DIFFICULTIES:
+		names.append(Settings.difficulty_label(d))
+	_row(p, "Bot difficulty", _options(names, Settings.DIFFICULTIES.find(Settings.bot_difficulty), func(i: int) -> void:
+		Settings.bot_difficulty = Settings.DIFFICULTIES[i]
+		Settings.save_file()))
+	p.add_child(MenuUI.label("Applies to the next match.", 16, MenuUI.DIM))
