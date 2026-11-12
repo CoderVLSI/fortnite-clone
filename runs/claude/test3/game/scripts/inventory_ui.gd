@@ -143,7 +143,7 @@ func _input(e: InputEvent) -> void:
 	if ctl.demo:
 		return
 	if e is InputEventKey and e.pressed and not e.echo:
-		if e.physical_keycode == KEY_TAB:
+		if e.is_action_pressed("inventory"):               # Tab by default; follows a rebind in Settings
 			toggle()
 			get_viewport().set_input_as_handled()
 		elif is_open and e.physical_keycode == KEY_ESCAPE:

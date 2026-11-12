@@ -637,11 +637,11 @@ func open_container(c: Dictionary, _by: Actor) -> void:
 			var w := Items.roll_weapon(rng, 0.08)
 			drops = [w, {"ammo": Items.def(w).ammo}, {"ammo": Items.AMMO_TYPES[rng.randi() % 5]}]
 			if rng.randf() < 0.7:
-				drops.append(Items.make("shield_potion" if rng.randf() < 0.5 else "medkit"))
+				drops.append(Items.roll_heal(rng, true))
 		"ammo_box":
 			drops = [{"ammo": Items.AMMO_TYPES[rng.randi() % 4]}, {"ammo": Items.AMMO_TYPES[rng.randi() % 5]}]
 		"supply_drop":
-			drops = [Items.roll_weapon(rng, 0.45), Items.roll_weapon(rng, 0.45), Items.make("shield_potion", 0, 2), Items.make("medkit"), {"ammo": "rockets"}, {"ammo": "medium"}]
+			drops = [Items.roll_weapon(rng, 0.45), Items.roll_weapon(rng, 0.45), Items.make("shield_potion", 0, 2), Items.make("mega_flask") if rng.randf() < 0.3 else Items.make("medkit"), {"ammo": "rockets"}, {"ammo": "medium"}]
 	for i in drops.size():
 		var a := TAU * i / drops.size() + rng.randf() * 0.5
 		spawn_pickup(drops[i], p + Vector3(cos(a), 0, sin(a)) * 1.5)

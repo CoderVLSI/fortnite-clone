@@ -39,7 +39,9 @@ func key(code: Key) -> void:
 	e.physical_keycode = code
 	e.pressed = true
 	Input.parse_input_event(e)
-	await frames(2)
+	for i in 2:                               # parsed events reach _input on the next process frame, not a physics one
+		await get_tree().process_frame
+	await frames(1)
 
 
 func mouse_at(i: int, off := Vector2(75, 90)) -> Vector2:
