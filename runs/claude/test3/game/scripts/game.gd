@@ -340,20 +340,17 @@ func _physics_process(delta: float) -> void:
 		blimp.visible = false
 	if not storm.active and match_time > 20.0:
 		storm.start()
-	if autotest and OS.get_cmdline_user_args().has("--trace") and match_time > 96.0 and match_time < 126.0 and Engine.get_physics_frames() % 30 == 0:
-		for idx in [3, 9]:
-			var a := actors[idx]
+	if autotest and OS.get_cmdline_user_args().has("--trace") and Engine.get_physics_frames() % 60 == 0:
+		for a in actors:                                    # follow every bot that is standing in the storm
+			if not a.alive() or a.state < Actor.State.GROUND or storm.outside(a.global_position) <= 0.0:
+				continue
 			var br = a.get_child(a.get_child_count() - 1)
+			if br.get("mode") == null:
+				continue
 			var wp: Vector3 = br.path[mini(br.path_i, br.path.size() - 1)] if br.path.size() > 0 else Vector3.ZERO
-			var cols := []
-			for ci in a.get_slide_collision_count():
-				var kc := a.get_slide_collision(ci)
-				var co = kc.get_collider()
-				cols.append("%s/%s n=(%.1f,%.1f,%.1f)" % [co.get_parent().name if co else "?", co.get_parent().get_parent().name if co else "?", kc.get_normal().x, kc.get_normal().y, kc.get_normal().z])
-			print("   COLL ", a.display_name, " ", cols, " walk_here=", nav.walkable(a.global_position), " walk_wp=", nav.walkable(wp))
-			print("TR %.1f %s st=%d mode=%s pos=(%.1f,%.1f,%.1f) goal=(%.1f,%.1f,%.1f) d=%.1f wp=(%.1f,%.1f) i=%d/%d vel=%.1f floor=%s move=%s since=%.1f" % [match_time, a.display_name, a.state, br.mode,
-					a.global_position.x, a.global_position.y, a.global_position.z, br.goal.x, br.goal.y, br.goal.z, Vector2(br.goal.x - a.global_position.x, br.goal.z - a.global_position.z).length(),
-					wp.x, wp.z, br.path_i, br.path.size(), a.velocity.length(), a.is_on_floor(), a.in_move, match_time - br.goal_since])
+			print("TR %.1f %s st=%d mode=%s hp=%.0f out=%.1f pos=(%.1f,%.1f,%.1f) goal=(%.1f,%.1f) d=%.1f wp=(%.1f,%.1f) i=%d/%d vel=%.1f walk=%s" % [match_time, a.display_name, a.state, br.mode,
+					a.hp, storm.outside(a.global_position), a.global_position.x, a.global_position.y, a.global_position.z, br.goal.x, br.goal.z,
+					Vector2(br.goal.x - a.global_position.x, br.goal.z - a.global_position.z).length(), wp.x, wp.z, br.path_i, br.path.size(), a.velocity.length(), nav.walkable(a.global_position)])
 	_update_projectiles(delta)
 	_update_pickups(delta)
 	_check_win()

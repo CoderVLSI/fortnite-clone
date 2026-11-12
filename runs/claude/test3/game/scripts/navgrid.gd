@@ -5,6 +5,8 @@ extends RefCounted
 const HALF := 215
 const CELL := 0.5
 const N := 860
+const SWIM_COST := 6.0              # swimming is slow: only when the way round is much longer
+const WALL_COST := 4.0              # cells beside a wall cost this much more, so paths keep to the middle of a room or doorway
 var astar := AStarGrid2D.new()
 var ready := false
 var terrain
@@ -24,7 +26,7 @@ func load_grid(t) -> void:
 	var n := N
 	astar.region = Rect2i(0, 0, n, n)
 	astar.cell_size = Vector2.ONE
-	astar.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ALWAYS
+	astar.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES     # never squeeze past a corner
 	astar.default_compute_heuristic = AStarGrid2D.HEURISTIC_OCTILE
 	astar.default_estimate_heuristic = AStarGrid2D.HEURISTIC_OCTILE
 	astar.update()
@@ -33,8 +35,13 @@ func load_grid(t) -> void:
 	for j in n:
 		var row := j * n
 		for i in n:
-			if data[row + i] < 128:
+			var v := data[row + i]
+			if v < 40:
 				astar.set_point_solid(Vector2i(i, j), true)
+			elif v < 128:
+				astar.set_point_weight_scale(Vector2i(i, j), SWIM_COST)
+			elif v < 220:
+				astar.set_point_weight_scale(Vector2i(i, j), WALL_COST)
 	ready = true
 
 
@@ -44,6 +51,11 @@ func cell(p: Vector3) -> Vector2i:
 
 func walkable(p: Vector3) -> bool:
 	return ready and not astar.is_point_solid(cell(p))
+
+
+func dry(p: Vector3) -> bool:
+	## Walkable without swimming.
+	return walkable(p) and astar.get_point_weight_scale(cell(p)) < SWIM_COST
 
 
 func centre(c: Vector2i, y: float) -> Vector3:

@@ -91,6 +91,8 @@ func _ready() -> void:
 	S.explode(metal.pos, 5.5, 100.0 * Structures.EXPLOSION_MULT, null)
 	check("explosion hurts the metal wall by up to 250", before - metal.hp > 80.0 and before - metal.hp <= 250.0, "lost %.0f" % (before - metal.hp))
 	# --- chain collapse: break the north wall and the ceiling it holds must fall; the ground floor stays
+	# (the explosion above can catch the floor too: top it up so this checks the collapse alone)
+	ground_floor.hp = Structures.MAT_HP.wood
 	var n_before := S.pieces.size()
 	S.damage(wall, 1000.0, null, wall.pos)
 	await frames(90)
@@ -101,7 +103,7 @@ func _ready() -> void:
 		if e != ceiling and e.dead:
 			others_held = false
 	check("unsupported ceiling collapsed", ceiling_ok, "pieces %d -> %d" % [n_before, S.pieces.size()])
-	check("grounded floor still standing", not ground_floor.dead)
+	check("grounded floor still standing", not ground_floor.dead, "hp=%.0f grounded=%s t=%.1f" % [ground_floor.hp, ground_floor.grounded, game.match_time])
 	# --- a tall tower collapses top to bottom when its base goes
 	a.set_build("")
 	a.build_piece = ""
