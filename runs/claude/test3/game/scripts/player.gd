@@ -2,7 +2,8 @@
 ## and a hands-off camera when an AI is playing the character (--demo).
 extends Node
 
-const SENS := 0.0026
+var SENS: float:                          # look speed comes from the Settings autoload
+	get: return Settings.sens()
 
 var game: Node
 var a: Actor
@@ -68,16 +69,17 @@ func _unhandled_input(e: InputEvent) -> void:
 		wheel_vec = (wheel_vec + e.relative).limit_length(140.0)     # the mouse picks a slice instead of looking
 	elif e is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		yaw -= e.relative.x * SENS * (0.55 if zoom > 0.5 else 1.0)
-		pitch = clampf(pitch - e.relative.y * SENS * (0.55 if zoom > 0.5 else 1.0), -1.45, 1.35)
+		pitch = clampf(pitch - e.relative.y * SENS * (0.55 if zoom > 0.5 else 1.0) * (-1.0 if Settings.invert_y else 1.0), -1.45, 1.35)
 	elif e is InputEventKey and e.pressed and not e.echo:
 		match e.physical_keycode:
 			KEY_ESCAPE:
-				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED else Input.MOUSE_MODE_CAPTURED
+				game.pause_menu.open()                     # Esc pauses (was: toggle mouse capture)
 			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
 				a.select(e.physical_keycode - KEY_1)
 	elif e is InputEventMouseButton and e.pressed:
 		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+			if not game.over:                          # the end-of-match summary keeps the mouse free for its buttons
+				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		elif not a.alive() and e.button_index == MOUSE_BUTTON_LEFT:
 			spectate = _next_alive(spectate)
 		elif e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
@@ -158,7 +160,7 @@ func _physics_process(delta: float) -> void:
 func _touch_input() -> void:
 	var k := SENS * 1.6 * (0.55 if zoom > 0.5 else 1.0)
 	yaw -= touch.look.x * k
-	pitch = clampf(pitch - touch.look.y * k, -1.45, 1.35)
+	pitch = clampf(pitch - touch.look.y * k * (-1.0 if Settings.invert_y else 1.0), -1.45, 1.35)
 	touch.look = Vector2.ZERO
 	a.aim_yaw = yaw
 	a.aim_pitch = pitch
