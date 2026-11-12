@@ -14,6 +14,13 @@ Open `index.html` in a browser. `README.txt` is the original note from the folde
 | `blender/` | 84 `.blend` asset sets, 21 per model (Blender 5.1) |
 | `videos/<model>/assets/` | 220 asset turntable recordings |
 
+## Godot replication (`runs/claude/`)
+
+This repo also contains a replication of the challenge, built in Godot 4.5 instead of Unity. The Stage 3 game (50 players,
+an island with snow and desert biomes, building, gold, upgrade benches and NPCs for hire) is in `runs/claude/test3/`.
+Its README covers the features, controls and tests. Ready-to-play builds are `builds/IslandRoyale-windows.zip` and
+`builds/IslandRoyale-android.apk`.
+
 ## What is not here
 
 The remaining 187 recordings (`videos/<model>/maps`, `mechanics`, `manual`, `archive`, about 23 GB) and the four Unity project archives (`Unity-Projects-2026-11-01/`, about 1.3 GB) are left out: 86 of those files are over GitHub's 100 MB per-file limit. The Map and Gameplay tabs therefore show posters but their videos will not play from this copy. Get them from the original Drive folder and place them next to `index.html`:
