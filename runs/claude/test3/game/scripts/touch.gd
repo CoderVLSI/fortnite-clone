@@ -40,6 +40,7 @@ func buttons() -> Dictionary:
 		"mat": [Vector2(s.x - 240, s.y - 560), 34.0, "MAT"],
 		"edit": [Vector2(s.x - 160, s.y - 560), 34.0, "EDIT"],
 		"emote": [Vector2(s.x - 80, s.y - 560), 34.0, "EMOTE"],
+		"inv": [Vector2(190, 39), 28.0, "INV"],          # beside the PAUSE button
 	}
 
 
@@ -64,6 +65,13 @@ func _hotbar_slot(p: Vector2) -> int:
 
 
 func _input(e: InputEvent) -> void:
+	if game.controller != null and game.controller.inv_open():       # the inventory screen takes the touches
+		fire = false
+		stick_id = -1
+		move = Vector2.ZERO
+		look_ids.clear()
+		button_ids.clear()
+		return
 	if e is InputEventScreenTouch:
 		var p: Vector2 = e.position
 		if e.pressed:

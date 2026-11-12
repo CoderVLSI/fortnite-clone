@@ -24,6 +24,7 @@ var wheel_vec := Vector2.ZERO                   # tests: aim without the mouse b
 var touch_use := false
 var look_entry = null                    # the breakable thing under the crosshair, for the HUD
 var touch: Control                       # on-screen controls, only on touch devices
+var inv: Control                         # inventory screen (Tab); the match keeps running behind it
 
 
 func setup(g: Node, actor: Actor, is_demo: bool) -> void:
@@ -46,6 +47,20 @@ func setup(g: Node, actor: Actor, is_demo: bool) -> void:
 		touch.setup(game)
 	elif not demo and DisplayServer.get_name() != "headless":
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	inv = preload("res://scripts/inventory_ui.gd").new()
+	var inv_layer := CanvasLayer.new()
+	inv_layer.layer = 5
+	add_child(inv_layer)
+	inv_layer.add_child(inv)
+	inv.setup(game, self)
+	if OS.get_cmdline_user_args().has("--invtest") or OS.get_cmdline_user_args().has("--invshot"):
+		var itest := preload("res://scripts/invtest.gd").new()     # inventory screen check / screenshot run
+		itest.setup(game)
+		game.add_child.call_deferred(itest)
+
+
+func inv_open() -> bool:
+	return inv != null and inv.is_open
 
 
 func on_player_eliminated(killer: Actor) -> void:
@@ -77,7 +92,9 @@ func _unhandled_input(e: InputEvent) -> void:
 			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
 				a.select(e.physical_keycode - KEY_1)
 	elif e is InputEventMouseButton and e.pressed:
-		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		if inv_open():
+			pass                                       # the inventory owns the mouse
+		elif Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 			if not game.over:                          # the end-of-match summary keeps the mouse free for its buttons
 				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		elif not a.alive() and e.button_index == MOUSE_BUTTON_LEFT:
@@ -112,12 +129,14 @@ func _physics_process(delta: float) -> void:
 				a.start_emote(WHEEL[pick])
 		a.in_dive = a.state == Actor.State.SKYDIVE and (pitch < -0.75 or Input.is_action_pressed("sprint"))
 		for bk in [["build_wall", "wall"], ["build_floor", "floor"], ["build_stairs", "stairs"], ["build_cone", "cone"]]:
-			if Input.is_action_just_pressed(bk[0]):
+			if Input.is_action_just_pressed(bk[0]) and not inv_open():
 				game.structures.cancel_edit()
 				a.set_build(bk[1])
 		if Input.is_action_just_pressed("edit"):
 			_edit_key()
-		if editing():
+		if inv_open():
+			a.in_fire = false                          # no firing or building behind the inventory
+		elif editing():
 			a.in_fire = false
 			_edit_tick(Input.is_action_pressed("fire"), Input.is_action_just_pressed("fire"))
 			if Input.is_action_just_pressed("reload"):
@@ -134,7 +153,7 @@ func _physics_process(delta: float) -> void:
 				a.in_fire = true
 			elif not Input.is_action_pressed("fire"):
 				a.in_fire = false
-		if Input.is_action_just_pressed("reload") and not editing():
+		if Input.is_action_just_pressed("reload") and not editing() and not inv_open():
 			a.start_reload()
 		if Input.is_action_just_pressed("pickaxe"):
 			a.select(-1)
@@ -158,6 +177,10 @@ func _physics_process(delta: float) -> void:
 
 
 func _touch_input() -> void:
+	if touch.take("inv"):
+		inv.toggle()
+	if inv_open():
+		touch.look = Vector2.ZERO
 	var k := SENS * 1.6 * (0.55 if zoom > 0.5 else 1.0)
 	yaw -= touch.look.x * k
 	pitch = clampf(pitch - touch.look.y * k * (-1.0 if Settings.invert_y else 1.0), -1.45, 1.35)
@@ -182,12 +205,14 @@ func _touch_input() -> void:
 		touch.look = Vector2.ZERO
 	a.in_dive = a.state == Actor.State.SKYDIVE and pitch < -0.75
 	for bk in [["b_wall", "wall"], ["b_floor", "floor"], ["b_stairs", "stairs"], ["b_cone", "cone"]]:
-		if touch.take(bk[0]):
+		if touch.take(bk[0]) and not inv_open():
 			game.structures.cancel_edit()
 			a.set_build(bk[1])
 	if touch.take("edit"):
 		_edit_key()
-	if editing():
+	if inv_open():
+		a.in_fire = false
+	elif editing():
 		a.in_fire = false
 		_edit_tick(touch.fire, touch.take("fire_down"))
 		if touch.take("reload"):
