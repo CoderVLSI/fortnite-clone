@@ -181,6 +181,10 @@ func shots() -> void:
 	var tag := "%dx%d" % [get_viewport().size.x, get_viewport().size.y]
 	if inv.touch_mode:
 		tag += "_touch"
+	var fresh := OS.get_cmdline_user_args().has("--newitems")        # --newitems: show the newest weapons and heals
+	if fresh:
+		a.slots = [Items.make("smg", 2), Items.make("burst_rifle", 3), Items.make("hunting_rifle", 1), Items.make("bandages", 0, 12), Items.make("mega_flask")]
+		tag += "_new"
 	inv.open()
 	await frames(8)
 	get_viewport().get_texture().get_image().save_png(dir.path_join("inv_%s.png" % tag))
@@ -192,5 +196,22 @@ func shots() -> void:
 		get_viewport().warp_mouse(inv.mouse)
 	await frames(8)
 	get_viewport().get_texture().get_image().save_png(dir.path_join("inv_%s_hover.png" % tag))
+	if fresh:
+		inv.close()
+		var ids := ["smg", "tactical_shotgun", "burst_rifle", "hunting_rifle", "bandages", "hydro_juice", "mega_flask"]
+		var p0: Vector3 = a.global_position
+		a.aim_yaw = 0.0
+		game.controller.yaw = 0.0
+		game.controller.pitch = -0.45
+		for i in ids.size():
+			var it := Items.make(ids[i], 1)
+			game.spawn_pickup(it, p0 + Vector3((i - 3) * 0.9, 0, -3.2))
+		await frames(40)
+		get_viewport().get_texture().get_image().save_png(dir.path_join("ground_new.png"))
+		a.slots = [Items.make("hydro_juice", 0, 2), Items.make("tactical_shotgun", 1), null, null, null]
+		a.select(1)
+		await frames(30)
+		game.controller.yaw = 0.5
+		get_viewport().get_texture().get_image().save_png(dir.path_join("held_tactical.png"))
 	print("INVSHOT ", tag)
 	get_tree().quit()

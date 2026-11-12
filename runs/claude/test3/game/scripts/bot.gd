@@ -285,15 +285,26 @@ func _decide() -> void:
 		var mk := a.find_item("medkit")
 		if mk < 0:
 			mk = a.find_item("healing_drink")
+		if mk < 0 and a.hp < 75.0:
+			mk = a.find_item("bandages")
 		var sp := a.find_item("shield_potion")
 		if sp < 0 and a.shield < 50.0:
 			sp = a.find_item("small_shield")
-		if a.hp < 60.0 and mk >= 0:
+		var mega := a.find_item("mega_flask")
+		var hydro := a.find_item("hydro_juice")
+		if mega >= 0 and a.hp < 60.0 and a.shield < 50.0 and game.match_time - a.last_hit_time > 8.0:
+			_box_up()
+			a.select(mega); a.start_use(); mode = "heal"; return
+		var heal_below := 75.0 if mk >= 0 and a.slots[mk].id == "bandages" else 60.0
+		if a.hp < heal_below and mk >= 0:
 			_box_up()
 			a.select(mk); a.start_use(); mode = "heal"; return
 		if a.shield < 50.0 and sp >= 0:
 			_box_up()
 			a.select(sp); a.start_use(); mode = "heal"; return
+		if hydro >= 0 and (a.hp < 75.0 or a.shield < 50.0):         # either one is missing
+			_box_up()
+			a.select(hydro); a.start_use(); mode = "heal"; return
 	if a.using > 0.0:
 		mode = "heal"
 		return
@@ -725,7 +736,10 @@ func _fight(delta: float) -> void:
 	var want_d := 18.0
 	if it != null:
 		match it.id:
-			"shotgun": want_d = 7.0
+			"shotgun", "tactical_shotgun": want_d = 7.0
+			"smg": want_d = 10.0
+			"burst_rifle": want_d = 26.0
+			"hunting_rifle": want_d = 55.0
 			"pistol": want_d = 14.0
 			"sniper_rifle": want_d = 70.0
 			"rocket_launcher": want_d = 30.0

@@ -504,12 +504,12 @@ func _draw_crosshair(sz: Vector2, s: Actor, ctl: Node) -> void:
 		return
 	var gap := maxf(_spread_px(sz, ctl, s.spread_deg(d)), 4.0)
 	match it.id:
-		"shotgun":                                  # a wide ring the size of the pellet spread
+		"shotgun", "tactical_shotgun":              # a wide ring the size of the pellet spread
 			_xring(c, gap, 2.0)
 			for dv in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
 				_xline(c + dv * (gap - 4.0), c + dv * (gap + 6.0), 2.0)
 			draw_circle(c, 1.6, Color(1, 1, 1, 0.9))
-		"sniper_rifle":
+		"sniper_rifle", "hunting_rifle":              # the hunting rifle has no scope: ring and dot only
 			if not scoped(s, ctl):
 				draw_circle(c, 2.2, Color(1, 1, 1, 0.95))
 				_xring(c, 9.0, 1.2)
