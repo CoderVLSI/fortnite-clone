@@ -24,6 +24,7 @@ var wheel_vec := Vector2.ZERO                   # tests: aim without the mouse b
 var touch_use := false
 var look_entry = null                    # the breakable thing under the crosshair, for the HUD
 var touch: Control                       # on-screen controls, only on touch devices
+var touch_last_build := "wall"            # the piece the touch Build button goes back to
 var inv: Control                         # inventory screen (Tab); the match keeps running behind it
 
 
@@ -204,10 +205,19 @@ func _touch_input() -> void:
 		wheel_vec = (wheel_vec + touch.look).limit_length(140.0)
 		touch.look = Vector2.ZERO
 	a.in_dive = a.state == Actor.State.SKYDIVE and pitch < -0.75
+	if touch.take("build") and not inv_open():        # one button in and out of build mode, like mobile shooters
+		var was_editing := editing()
+		game.structures.cancel_edit()
+		if a.build_piece == "" and not was_editing:
+			a.set_build(touch_last_build)
+		elif a.build_piece != "":
+			touch_last_build = a.build_piece
+			a.set_build(a.build_piece)                     # the same piece again leaves build mode
 	for bk in [["b_wall", "wall"], ["b_floor", "floor"], ["b_stairs", "stairs"], ["b_cone", "cone"]]:
-		if touch.take(bk[0]) and not inv_open():
+		if touch.take(bk[0]) and not inv_open() and a.build_piece != bk[1]:
 			game.structures.cancel_edit()
 			a.set_build(bk[1])
+			touch_last_build = bk[1]
 	if touch.take("edit"):
 		_edit_key()
 	if inv_open():

@@ -6,6 +6,12 @@ config_version=5
 config/name="Island Royale"
 run/main_scene="res://scenes/menu.tscn"
 config/features=PackedStringArray("4.5", "GL Compatibility")
+config/icon="res://branding/icon.png"
+config/windows_native_icon="res://branding/icon.ico"
+boot_splash/bg_color=Color(0.03, 0.04, 0.08, 1)
+boot_splash/image="res://branding/splash.png"
+boot_splash/fullsize=true
+boot_splash/use_filter=true
 
 [autoload]
 
