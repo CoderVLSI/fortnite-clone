@@ -3,7 +3,18 @@
 ## and hunts other players late in the match.
 extends Node
 
+## Difficulty presets. skill: the range each bot's skill is drawn from (aim, reaction, turning, leading).
+## aim: multiplies the aim error. react: seconds added to the reaction time. sight: how far bots spot enemies.
+## early: before the storm first moves, the range inside which they pick a fight (anyone shooting them is fought anyway).
+## build: how readily they build in a fight (0 = never). gap: seconds between pieces. mats: materials they gather to.
+const LEVELS := {
+	"easy": {"skill": [0.0, 0.45], "aim": 1.6, "react": 0.35, "sight": 65.0, "early": 25.0, "build": 0.0, "gap": 0.9, "mats": 30},
+	"normal": {"skill": [0.15, 0.8], "aim": 1.0, "react": 0.0, "sight": 95.0, "early": 25.0, "build": 0.55, "gap": 0.35, "mats": 90},
+	"sweaty": {"skill": [0.6, 1.0], "aim": 0.7, "react": -0.08, "sight": 120.0, "early": 60.0, "build": 1.0, "gap": 0.14, "mats": 200},
+}
+
 var game: Node
+var L: Dictionary = LEVELS.normal
 var a: Actor
 var skill := 0.5                         # 0 = slow and inaccurate, 1 = sharp
 var mode := "drop"
@@ -44,12 +55,16 @@ var stuck_n := 0                        # consecutive half-seconds without real 
 var escape_to := Vector3.INF            # a clear spot to back off to when wedged
 var escape_until := 0.0
 var junk: Array = []                    # items this bot threw away, never to be picked up again by it
+var build_next := 0.0                   # earliest time for the next piece
+var cover_until := 0.0                  # sheltering behind a wall it just built
+var harvest_e = null                    # the tree or rock it is gathering from
 
 
 func setup(g: Node, actor: Actor, s: float) -> void:
 	game = g
 	a = actor
-	skill = s
+	L = LEVELS.get(game.get("difficulty") if game.get("difficulty") != null else "normal", LEVELS.normal)
+	skill = lerpf(L.skill[0], L.skill[1], s)
 	a.spread_mul = lerpf(2.4, 1.1, skill)
 	think = game.rng.randf() * 0.25
 	# landing spot: a point of interest, or anywhere on land
@@ -114,6 +129,8 @@ func _ground(delta: float) -> void:
 		return
 	if a.using > 0.0:
 		return
+	if mode == "harvest" and _chop():
+		return
 	if has_goal:
 		_follow(delta)
 
@@ -122,7 +139,9 @@ func _ground(delta: float) -> void:
 
 func _perceive() -> void:
 	var best: Actor = null
-	var bd := 95.0
+	var bd: float = L.sight
+	if (mode == "loot" or mode == "harvest") and game.match_time - a.last_hit_time > 4.0:
+		bd *= 0.5                                      # heads down, looting
 	var fwd := Vector3(-sin(a.aim_yaw), 0, -cos(a.aim_yaw))
 	for o in game.actors:
 		if o == a or not o.alive() or o.state == Actor.State.BLIMP or o.state == Actor.State.SKYDIVE:
@@ -255,7 +274,7 @@ func _decide() -> void:
 	if target != null and target.alive() and game.match_time - target_seen < 1.2:
 		# unarmed bots only swing back at someone right on top of them; otherwise they keep looking for a weapon
 		var cornered: bool = a.global_position.distance_to(target.global_position) < 2.4 and target == a.last_attacker and game.match_time - a.last_hit_time < 2.0
-		if armed or cornered:
+		if cornered or (armed and _engages(target)):
 			mode = "fight"
 			return
 	# 3. patch up when it is quiet
@@ -268,8 +287,10 @@ func _decide() -> void:
 		if sp < 0 and a.shield < 50.0:
 			sp = a.find_item("small_shield")
 		if a.hp < 60.0 and mk >= 0:
+			_box_up()
 			a.select(mk); a.start_use(); mode = "heal"; return
 		if a.shield < 50.0 and sp >= 0:
+			_box_up()
 			a.select(sp); a.start_use(); mode = "heal"; return
 	if a.using > 0.0:
 		mode = "heal"
@@ -297,14 +318,25 @@ func _decide() -> void:
 		goal_container = c
 		_set_goal(c.pos)
 		return
-	# 5. late in the match, hunt
-	if armed and (game.alive_count() <= 9 or s.phase >= 2):
+	# 5. short of materials and nothing more pressing: gather some
+	if armed and _mats_total() < int(L.mats) and not s.shrinking and (mode == "harvest" or game.rng.randf() < 0.6):
+		var h = _harvest_target()
+		if h != null:
+			mode = "harvest"
+			if harvest_e != h:
+				harvest_e = h
+				has_goal = false
+				_set_goal(h.pos)
+			return
+	harvest_e = null
+	# 6. late in the match, hunt
+	if armed and (game.alive_count() <= 6 or s.phase >= 3):
 		var prey := _nearest_enemy()
 		if prey != null:
 			mode = "hunt"
 			_set_goal(prey.global_position)
 			return
-	# 6. otherwise drift towards the next circle
+	# 7. otherwise drift towards the next circle
 	if game.autotest and not armed and OS.get_cmdline_user_args().has("--trace") and int(game.match_time * 5) % 50 == 0:
 		_debug_loot()
 	mode = "roam"
@@ -541,11 +573,13 @@ func _follow(delta: float) -> void:
 		a.aim_pitch = lerpf(a.aim_pitch, 0.0, delta * 5.0)
 		a.in_move = Vector2(0, 1)
 		a.in_sprint = to.length() > 2.5 or path_i >= path.size() - 1       # slow down for tight corners and doorways
+	if stuck_n >= 1 and _breach(to):
+		return
 	_unstick(to)
 
 
 func _shooting_on_the_move() -> bool:
-	return mode == "storm" and target != null and target.alive() and game.match_time - target_seen < 0.45 and a.has_weapon() and a.state == Actor.State.GROUND
+	return mode == "storm" and target != null and target.alive() and game.match_time - target_seen < 0.45 and a.has_weapon() and a.state == Actor.State.GROUND and _engages(target)
 
 
 func _unstick(to: Vector3) -> void:
@@ -631,7 +665,7 @@ func _aim(delta: float) -> float:
 	err_t -= delta
 	if err_t <= 0.0:
 		err_t = lerpf(0.5, 0.25, skill)
-		var e := lerpf(0.075, 0.012, skill)
+		var e: float = lerpf(0.075, 0.012, skill) * L.aim
 		aim_err = Vector2(game.rng.randf_range(-e, e), game.rng.randf_range(-e, e))
 	var lead := target.velocity * clampf(dist / 180.0, 0.0, 0.35) * skill
 	var d := (tp + lead - from)
@@ -648,7 +682,7 @@ func _trigger(delta: float, dist: float, want_yaw: float) -> void:
 	var it = a.item()
 	if it == null or Items.def(it).kind != "weapon" or a.reloading > 0.0:
 		return
-	if game.match_time - first_seen < lerpf(0.9, 0.22, skill) or absf(angle_difference(a.aim_yaw, want_yaw)) > 0.12:
+	if game.match_time - first_seen < _reaction() or absf(angle_difference(a.aim_yaw, want_yaw)) > 0.12:
 		return
 	if dist > Items.def(it).range * 0.85:
 		return
@@ -704,10 +738,11 @@ func _fight(delta: float) -> void:
 	a.in_move = Vector2(strafe * (0.9 if visible else 0.2), fwd)
 	_keep_footing()
 	a.in_sprint = fwd > 0.5 and dist > 30.0
+	_fight_build(dist, visible)
 	if game.rng.randf() < delta * 0.25 * skill and visible:
 		a.in_jump = true
 	# fire in bursts once the reaction time has passed
-	var reacted: bool = game.match_time - first_seen > lerpf(0.9, 0.22, skill)
+	var reacted: bool = game.match_time - first_seen > _reaction()
 	if not visible or not reacted or a.reloading > 0.0:
 		return
 	if absf(angle_difference(a.aim_yaw, want_yaw)) > 0.12:
@@ -745,3 +780,158 @@ func _debug_loot() -> void:
 	for it in a.slots:
 		inv.append(("%s(%d+%d)" % [it.id, it.get("loaded", 0), int(a.ammo[Items.def(it).ammo]) if Items.def(it).kind == "weapon" else 0]) if it != null else "-")
 	print("LOOTDBG %.0f %s inv=%s %s ok_kinds=%s" % [game.match_time, a.display_name, inv, r, kinds])
+
+
+func _engages(o: Actor) -> bool:
+	## Early on bots loot first: they only start fights close by, or with someone already shooting them.
+	if o == a.last_attacker and game.match_time - a.last_hit_time < 6.0:
+		return true
+	# the range opens up as the storm closes in: early range while it waits, then wider each phase
+	var s: Storm = game.storm
+	var reach: float = [float(L.early), float(L.early) * 1.8, float(L.early) * 2.8, 1e9][mini(s.phase + (1 if s.shrinking else 0), 3)]
+	return a.global_position.distance_to(o.global_position) < reach
+
+
+func _reaction() -> float:
+	return maxf(lerpf(0.9, 0.22, skill) + float(L.react), 0.12)
+
+
+# ----------------------------------------------------------------------------- building
+
+func _mats_total() -> int:
+	return int(a.mats.wood) + int(a.mats.brick) + int(a.mats.metal)
+
+
+func _best_mat(pieces := 1) -> String:
+	## The material it has most of, if there is enough of it for this many pieces.
+	var best := ""
+	var most := Structures.COST * pieces - 1
+	for m in Structures.MATS:
+		if int(a.mats[m]) > most:
+			most = int(a.mats[m])
+			best = m
+	return best
+
+
+func _place(piece: String, yaw: float, pitch := 0.0) -> bool:
+	## Build one piece the way the player does: the same target rules, facing `yaw`.
+	if a.state != Actor.State.GROUND or game.match_time < build_next:
+		return false
+	var m := _best_mat()
+	if m == "":
+		return false
+	var y0 := a.aim_yaw
+	var p0 := a.aim_pitch
+	a.build_piece = piece
+	a.build_mat = m
+	a.aim_yaw = yaw
+	a.aim_pitch = pitch
+	var ok: bool = game.structures.place(a)
+	a.build_piece = ""
+	a.aim_yaw = y0
+	a.aim_pitch = p0
+	if ok:
+		build_next = game.match_time + float(L.gap)
+	return ok
+
+
+func _covered_from(o: Actor) -> bool:
+	## Is one of the built pieces between us?
+	var hit: Dictionary = game.ray(a.eye(), o.eye(), a, 1)
+	if hit.is_empty():
+		return false
+	var e = game.structures.lookup(hit.collider, hit.get("shape", 0))
+	return e != null and e.kind == "build"
+
+
+func _fight_build(dist: float, visible: bool) -> void:
+	## Take cover when shot from range, rebuild it when it is shot out, and ramp up to someone above.
+	if float(L.build) <= 0.0:
+		return
+	var to := target.global_position - a.global_position
+	var yaw_to := atan2(-to.x, -to.z)
+	var shot_at: bool = target == a.last_attacker and game.match_time - a.last_hit_time < 0.5
+	if shot_at and dist > 7.0 and not _covered_from(target) and game.rng.randf() < float(L.build):
+		if _place("wall", yaw_to):
+			cover_until = game.match_time + lerpf(1.2, 2.4, game.rng.randf())
+	if game.match_time < cover_until:
+		a.in_move.x = 0.0                     # stay behind it: reload, let the shield or the wall soak it
+		if a.item() != null and Items.def(a.item()).kind == "weapon" and a.item().loaded < Items.def(a.item()).mag:
+			a.start_reload()
+	# someone on a roof, a tower or a build: ramp up to them
+	if to.y > 2.5 and dist < 32.0 and visible and _best_mat(2) != "" and game.rng.randf() < float(L.build):
+		if _place("stairs", yaw_to):
+			a.in_move = Vector2(0, 1)
+			a.in_sprint = false
+
+
+func _box_up() -> void:
+	## About to heal with an enemy recently around: four walls first.
+	if float(L.build) <= 0.0 or _best_mat(4) == "" or a.state != Actor.State.GROUND:
+		return
+	if game.match_time - target_seen > 12.0 and a.hp > 45.0:
+		return
+	build_next = 0.0
+	for yaw in [0.0, PI / 2, PI, -PI / 2]:
+		build_next = 0.0
+		_place("wall", yaw)
+	build_next = game.match_time + float(L.gap)
+
+
+func _breach(to: Vector3) -> bool:
+	## Blocked by a built piece (its own box, or someone's wall): pickaxe through it.
+	var dir := to
+	dir.y = 0.0
+	if dir.length() < 0.01:
+		return false
+	var from := a.global_position + Vector3(0, 1.0, 0)
+	var hit: Dictionary = game.ray(from, from + dir.normalized() * 2.6, a, 1)
+	if hit.is_empty():
+		return false
+	var e = game.structures.lookup(hit.collider, hit.get("shape", 0))
+	if e == null or e.kind != "build":
+		return false
+	if a.active != -1:
+		a.select(-1)
+	var d: Vector3 = hit.position - a.eye()
+	a.aim_yaw = atan2(-d.x, -d.z)
+	a.aim_pitch = atan2(d.y, Vector2(d.x, d.z).length())
+	a.in_fire = true
+	a.in_move = Vector2.ZERO
+	return true
+
+
+# ----------------------------------------------------------------------------- harvesting
+
+func _harvest_target() -> Variant:
+	if harvest_e != null and not harvest_e.dead:
+		return harvest_e
+	var best = null
+	var bd := 40.0 * 40.0
+	for e in game.structures.harvestables():
+		if e.dead:
+			continue
+		var d := a.global_position.distance_squared_to(e.pos)
+		if d < bd and not _avoided(e.pos) and game.storm.outside_next(e.pos) < 0.0:
+			bd = d
+			best = e
+	return best
+
+
+func _chop() -> bool:
+	## Next to the tree or rock: swing at it until full or it breaks. False while still walking to it.
+	if harvest_e == null or harvest_e.dead or _mats_total() >= int(L.mats) * 1.3:
+		harvest_e = null
+		mode = "roam"
+		return false
+	var aim_at := Vector3(harvest_e.pos.x, a.eye().y - 0.25, harvest_e.pos.z)
+	var hit: Dictionary = game.ray(a.eye(), a.eye() + (aim_at - a.eye()).normalized() * 3.0, a, 1)
+	if hit.is_empty() or game.structures.lookup(hit.collider, hit.get("shape", 0)) != harvest_e:
+		return false
+	if a.active != -1:
+		a.select(-1)
+	var d := aim_at - a.eye()
+	a.aim_yaw = lerp_angle(a.aim_yaw, atan2(-d.x, -d.z), 0.5)
+	a.aim_pitch = lerpf(a.aim_pitch, atan2(d.y, Vector2(d.x, d.z).length()), 0.5)
+	a.in_fire = true
+	return true

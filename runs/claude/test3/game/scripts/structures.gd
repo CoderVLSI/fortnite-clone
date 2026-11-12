@@ -176,6 +176,21 @@ func lookup(collider: Object, shape := 0) -> Variant:
 	return e
 
 
+var _harvest_cache: Array = []
+
+
+func harvestables() -> Array:
+	## Trees, rocks and farm clutter: what a bot short of materials goes and swings at.
+	if _harvest_cache.is_empty():
+		for table in trees.values():
+			_harvest_cache.append_array((table as Dictionary).values())
+		for e in by_body.values():
+			var nm: String = e.name
+			if e.kind == "level" and (nm.begins_with("rock_") or nm.begins_with("farm_")):
+				_harvest_cache.append(e)
+	return _harvest_cache
+
+
 # ----------------------------------------------------------------------------- damage
 
 func damage_at(collider: Object, shape: int, amount: float, attacker: Actor, at: Vector3) -> Variant:
@@ -522,6 +537,11 @@ func _spawn_piece(t: Dictionary, mat: String, owner_a: Actor) -> Dictionary:
 		features[f].append(e)
 	building.append(e)
 	built += 1
+	if t.piece == "wall" and e.grounded and game.get("nav") != null:
+		# bots path around walls standing on the ground
+		var half: Vector3 = (t.xf as Transform3D).basis.x * GRID * 0.5
+		e["nav_ends"] = [t.xf.origin - half, t.xf.origin + half]
+		game.nav.mark_wall(e.nav_ends[0], e.nav_ends[1], true)
 	if not game.autotest:
 		mi.scale = Vector3(1, 0.2, 1)
 		var tw := create_tween()
@@ -551,6 +571,9 @@ func _grounded(t: Dictionary, root: Node3D) -> bool:
 
 
 func _remove_piece(e: Dictionary) -> void:
+	if e.has("nav_ends"):
+		game.nav.mark_wall(e.nav_ends[0], e.nav_ends[1], false)
+		e.erase("nav_ends")
 	pieces.erase(e.key)
 	by_body.erase((e.body as Node).get_instance_id())
 	(by_cell.get(e.cell, []) as Array).erase(e)

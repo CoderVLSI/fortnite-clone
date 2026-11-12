@@ -57,11 +57,18 @@ var pause_menu: CanvasLayer
 var summarytest := ""                    # --summarytest=<dir>: scripted end-of-match run that saves menu_*.png captures
 var soundtest := false
 var audio: GameAudio
+var difficulty := "normal"               # bot difficulty: easy / normal / sweaty (Settings, or --difficulty=)
 
 
 func _ready() -> void:
 	var seed_v := int(Time.get_unix_time_from_system())
+	var settings_node := get_node_or_null("/root/Settings")
+	var saved = settings_node.get("bot_difficulty") if settings_node else null
+	if saved is String and saved in ["easy", "normal", "sweaty"]:
+		difficulty = saved
 	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--difficulty=") and a.get_slice("=", 1) in ["easy", "normal", "sweaty"]:
+			difficulty = a.get_slice("=", 1)
 		if a == "--demo": demo = true
 		if a == "--autotest": autotest = true; demo = true
 		if a == "--buildtest": buildtest = true
@@ -419,7 +426,7 @@ func _check_win() -> void:
 		stats["ever_armed"] = armed_ever
 		stats["pieces_built"] = structures.built
 		stats["parts_destroyed"] = structures.destroyed
-		print("MATCH_OVER ", JSON.stringify({"winner": winner.display_name if winner else "nobody", "winner_kills": winner.kills if winner else 0,
+		print("MATCH_OVER ", JSON.stringify({"difficulty": difficulty, "winner": winner.display_name if winner else "nobody", "winner_kills": winner.kills if winner else 0,
 				"time": snappedf(match_time, 0.1), "player_place": player.placement, "player_kills": player.kills, "storm_phase": storm.phase + 1, "stats": stats}))
 		if autotest:
 			get_tree().quit()

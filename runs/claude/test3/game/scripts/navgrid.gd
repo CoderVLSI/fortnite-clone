@@ -10,6 +10,8 @@ const WALL_COST := 4.0              # cells beside a wall cost this much more, s
 var astar := AStarGrid2D.new()
 var ready := false
 var terrain
+var baked := PackedByteArray()          # 1 where the baked grid is blocked, to restore cells when a built wall goes
+var built := {}                         # cell -> number of built walls standing on it
 
 
 func load_grid(t) -> void:
@@ -32,12 +34,14 @@ func load_grid(t) -> void:
 	astar.update()
 	img.convert(Image.FORMAT_L8)
 	var data := img.get_data()
+	baked.resize(n * n)
 	for j in n:
 		var row := j * n
 		for i in n:
 			var v := data[row + i]
 			if v < 40:
 				astar.set_point_solid(Vector2i(i, j), true)
+				baked[row + i] = 1
 			elif v < 128:
 				astar.set_point_weight_scale(Vector2i(i, j), SWIM_COST)
 			elif v < 220:
@@ -112,3 +116,26 @@ func path(from: Vector3, to: Vector3, clear: Callable) -> PackedVector3Array:
 	if cell(to) == b:
 		out.append(to)
 	return out
+
+
+func mark_wall(from: Vector3, to: Vector3, standing: bool) -> void:
+	## A wall someone built on the ground blocks the cells along it while it stands.
+	if not ready:
+		return
+	var along := to - from
+	along.y = 0.0
+	var side := Vector3(-along.z, 0, along.x).normalized()
+	var cells := {}
+	var steps := int(ceil(along.length() / (CELL * 0.5)))
+	for k in steps + 1:
+		var p := from + along * (float(k) / steps)
+		for off in [-0.4, 0.0, 0.4]:
+			cells[cell(p + side * off)] = true
+	for c in cells:
+		var n: int = built.get(c, 0) + (1 if standing else -1)
+		if n > 0:
+			built[c] = n
+			astar.set_point_solid(c, true)
+		else:
+			built.erase(c)
+			astar.set_point_solid(c, baked[c.y * N + c.x] == 1)
