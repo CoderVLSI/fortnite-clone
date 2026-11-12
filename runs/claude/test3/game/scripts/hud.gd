@@ -209,15 +209,20 @@ func _draw_map(origin: Vector2, extent: float, centre: Vector2, span: float, s: 
 		draw_rect(Rect2(origin, Vector2(extent, extent)), Color(0.2, 0.4, 0.6))
 	# storm: the current wall and the next safe circle
 	var k := extent / span
+	var box := Rect2(origin, Vector2(extent, extent))
 	if st.active:
-		draw_arc(_map_point(st.center, origin, extent, centre, span), maxf(st.radius * k, 1.0), 0, TAU, 72, STORM_COL, 3.0 if big else 2.0)
-		draw_arc(_map_point(st.next_center, origin, extent, centre, span), maxf(st.next_radius * k, 1.0), 0, TAU, 72, Color(1, 1, 1, 0.95), 2.0 if big else 1.5)
+		_clipped_circle(_map_point(st.center, origin, extent, centre, span), maxf(st.radius * k, 1.0), box, STORM_COL, 3.0 if big else 2.0)
+		_clipped_circle(_map_point(st.next_center, origin, extent, centre, span), maxf(st.next_radius * k, 1.0), box, Color(1, 1, 1, 0.95), 2.0 if big else 1.5)
 	if game.match_time < game.BLIMP_TIME:
 		var a := _map_point(Vector2(game.blimp_from.x, game.blimp_from.z), origin, extent, centre, span)
 		var e: Vector3 = game.blimp_from + game.blimp_dir * game.BLIMP_SPEED * game.BLIMP_TIME
-		draw_dashed_line(a, _map_point(Vector2(e.x, e.z), origin, extent, centre, span), Color(1, 1, 1, 0.8), 2.0, 8.0)
+		var seg = _clip_segment(a, _map_point(Vector2(e.x, e.z), origin, extent, centre, span), box)
+		if seg != null:
+			draw_dashed_line(seg[0], seg[1], Color(1, 1, 1, 0.8), 2.0, 8.0)
 		var bp: Vector3 = game.blimp_pos()
-		draw_circle(_map_point(Vector2(bp.x, bp.z), origin, extent, centre, span), 5.0, Color(1.0, 0.6, 0.2))
+		var bpp := _map_point(Vector2(bp.x, bp.z), origin, extent, centre, span)
+		if box.has_point(bpp):
+			draw_circle(bpp, 5.0, Color(1.0, 0.6, 0.2))
 	# supply drops: falling ones pulse, landed unopened ones stay marked
 	for d in game.events.drops:
 		var dp: Vector3 = (d.node as Node3D).global_position
@@ -228,6 +233,8 @@ func _draw_map(origin: Vector2, extent: float, centre: Vector2, span: float, s: 
 		if opened:
 			continue
 		var mp := _map_point(Vector2(dp.x, dp.z), origin, extent, centre, span)
+		if not box.has_point(mp):
+			continue
 		var ms := (16.0 if big else 12.0) * (1.0 + (0.25 * sin(game.match_time * 6.0) if not d.landed else 0.0))
 		if not draw_icon("supply_drop", Rect2(mp - Vector2(ms, ms), Vector2(ms, ms) * 2.0)):
 			draw_circle(mp, ms * 0.5, Color(0.3, 0.75, 1.0))
@@ -239,6 +246,40 @@ func _draw_map(origin: Vector2, extent: float, centre: Vector2, span: float, s: 
 	var sc := 9.0 if big else 7.0
 	draw_colored_polygon(PackedVector2Array([pp + f * sc * 1.4, pp - f * sc * 0.8 + r * sc * 0.8, pp - f * sc * 0.3, pp - f * sc * 0.8 - r * sc * 0.8]), Color(1.0, 0.95, 0.3))
 	draw_polyline(PackedVector2Array([pp + f * sc * 1.4, pp - f * sc * 0.8 + r * sc * 0.8, pp - f * sc * 0.3, pp - f * sc * 0.8 - r * sc * 0.8, pp + f * sc * 1.4]), Color(0, 0, 0, 0.8), 1.5)
+
+
+func _clip_segment(a: Vector2, b: Vector2, r: Rect2) -> Variant:
+	## Liang-Barsky: the part of a-b inside r, or null.
+	var t0 := 0.0
+	var t1 := 1.0
+	var d := b - a
+	for side in [[-d.x, a.x - r.position.x], [d.x, r.end.x - a.x], [-d.y, a.y - r.position.y], [d.y, r.end.y - a.y]]:
+		var pp: float = side[0]
+		var q: float = side[1]
+		if absf(pp) < 1e-6:
+			if q < 0.0:
+				return null
+			continue
+		var t := q / pp
+		if pp < 0.0:
+			t0 = maxf(t0, t)
+		else:
+			t1 = minf(t1, t)
+		if t0 > t1:
+			return null
+	return [a + d * t0, a + d * t1]
+
+
+func _clipped_circle(c: Vector2, radius: float, r: Rect2, col: Color, w: float) -> void:
+	## A circle drawn only inside the map box (the storm can be far bigger than the minimap).
+	var n := 96
+	var prev := c + Vector2(radius, 0)
+	for i in range(1, n + 1):
+		var p := c + Vector2(cos(TAU * i / n), sin(TAU * i / n)) * radius
+		var seg = _clip_segment(prev, p, r)
+		if seg != null:
+			draw_line(seg[0], seg[1], col, w, true)
+		prev = p
 
 
 func _draw_minimap(sz: Vector2, s: Actor) -> void:
@@ -357,7 +398,7 @@ func _draw_hotbar(sz: Vector2, s: Actor) -> void:
 				txt(r.position + Vector2(0, box - 7), "%d" % it.loaded, 14, Color(1, 1, 1, 0.95), HORIZONTAL_ALIGNMENT_RIGHT, box - 6)
 			else:
 				txt(r.position + Vector2(0, box - 7), "x%d" % it.count, 14, Color(1, 1, 1, 0.95), HORIZONTAL_ALIGNMENT_RIGHT, box - 6)
-	# ammo for the weapon in hand, and the reserves by type
+	# ammo for the weapon in hand
 	var held = s.item()
 	if held != null and Items.def(held).kind == "weapon":
 		var d2: Dictionary = Items.def(held)
@@ -366,12 +407,8 @@ func _draw_hotbar(sz: Vector2, s: Actor) -> void:
 		txt(Vector2(sz.x - 170, y0 - 28), "/ %d" % s.ammo[d2.ammo], 24, Color(0.85, 0.88, 0.92))
 		txt(Vector2(sz.x - 260, y0 - 50), Items.label(held), 14, Items.RARITY_COLORS[held.rarity], HORIZONTAL_ALIGNMENT_RIGHT, 232)
 		txt(Vector2(sz.x - 260, y0 - 30), d2.ammo + " ammo", 13, Items.AMMO_COLORS[d2.ammo], HORIZONTAL_ALIGNMENT_RIGHT, 232)
-	var ax := x0
-	for t in Items.AMMO_TYPES:
-		if not draw_icon("ammo_" + t, Rect2(ax - 4, y0 - 31, 20, 20)):
-			draw_rect(Rect2(ax, y0 - 24, 10, 10), Items.AMMO_COLORS[t])
-		txt(Vector2(ax + 17, y0 - 14), "%d" % s.ammo[t], 13, Color(0.9, 0.92, 0.95))
-		ax += 52
+	# (all the ammo reserves are listed, labelled, in the inventory screen: a row of unlabelled ammo icons
+	# here was easy to mistake for the building materials)
 
 
 func _draw_mats(o: Vector2, s: Actor) -> void:
@@ -502,9 +539,10 @@ func _draw_crosshair(sz: Vector2, s: Actor, ctl: Node) -> void:
 		draw_circle(c, 3.5, Color(0, 0, 0, 0.6))
 		draw_circle(c, 2.2, Color(1, 1, 1, 0.95))
 		return
-	var gap := maxf(_spread_px(sz, ctl, s.spread_deg(d)), 4.0)
+	var gap := clampf(_spread_px(sz, ctl, s.spread_deg(d)), 4.0, sz.y * 0.06)          # never wider than a small part of the screen
 	match it.id:
-		"shotgun", "tactical_shotgun":              # a wide ring the size of the pellet spread
+		"shotgun", "tactical_shotgun":              # a ring about half the pellet spread: compact, still grows with bloom
+			gap = clampf(_spread_px(sz, ctl, s.spread_deg(d)) * 0.45, 12.0, sz.y * 0.035)
 			_xring(c, gap, 2.0)
 			for dv in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
 				_xline(c + dv * (gap - 4.0), c + dv * (gap + 6.0), 2.0)

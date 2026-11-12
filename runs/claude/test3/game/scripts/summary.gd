@@ -23,7 +23,7 @@ func setup(game: Node) -> void:
 	panel.add_child(col)
 	var p: Actor = game.player
 	var won: bool = game.winner == p
-	col.add_child(MenuUI.label("VICTORY ROYALE" if won else "MATCH OVER", 44, MenuUI.ACCENT if won else MenuUI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+	col.add_child(MenuUI.label("LAST ONE STANDING" if won else "MATCH OVER", 44, MenuUI.ACCENT if won else MenuUI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
 	col.add_child(MenuUI.label("#%d of %d" % [p.placement, game.actors.size()], 72, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER))
 	if not won and game.winner:
 		col.add_child(MenuUI.label("%s won the match" % game.winner.display_name, 20, MenuUI.DIM, HORIZONTAL_ALIGNMENT_CENTER))
@@ -38,6 +38,7 @@ func setup(game: Node) -> void:
 		["Eliminations", str(p.kills)],
 		["Damage dealt", str(int(round(game.player_damage)))],
 		["Time survived", "%d:%02d" % [secs / 60, secs % 60]],
+		["XP earned", "+%d" % game.xp_earned if game.xp_earned >= 0 else "-"],
 	]
 	if game.stats.has("harvested"):
 		rows.append(["Materials harvested", str(int(game.stats["harvested"]))])

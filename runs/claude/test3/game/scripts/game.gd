@@ -152,6 +152,9 @@ func _ready() -> void:
 	if autotest:
 		Engine.time_scale = 8.0
 		Engine.max_physics_steps_per_frame = 16
+	var st := get_node_or_null("/root/Settings")
+	if st and not demo:
+		st.play_music("battle", -9.0, 2.5)          # sits under gunfire and footsteps
 
 
 # ----------------------------------------------------------------------------- set-up
@@ -165,6 +168,12 @@ func _setup_doors() -> void:
 	## Hinged doors swing open when someone is close; warehouse roller doors start rolled up.
 	for n in island.find_children("warehouse_roller_door", "MeshInstance3D", true, false):
 		n.position.y += 3.5
+	# a house's door frame and trim are decoration: the shell already has the opening, and their colliders
+	# put a lip and a low lintel in the doorway that trapped people inside
+	for deco in ["house_door_frame", "house_trim"]:
+		for n in island.find_children(deco, "MeshInstance3D", true, false):
+			for cs in n.find_children("*", "CollisionShape3D", true, false):
+				cs.disabled = true
 	for nm in ["house_door", "warehouse_door"]:
 		for n in island.find_children(nm, "MeshInstance3D", true, false):
 			var shape: CollisionShape3D = null
@@ -312,7 +321,12 @@ func _setup_actors() -> void:
 			Color(0.2, 0.7, 0.7), Color(0.85, 0.45, 0.65), Color(0.45, 0.5, 0.55)]
 	player = Actor.new()
 	add_child(player)
-	player.setup(self, "You", true, Color(0.95, 0.55, 0.15), Color(0.15, 0.2, 0.3))
+	var look: Array = [Color(0.95, 0.55, 0.15), Color(0.15, 0.2, 0.3)]
+	var stn := get_node_or_null("/root/Settings")
+	if stn and not demo:
+		var o: Array = stn.OUTFITS[stn.outfit]          # the outfit picked in the lobby's locker
+		look = [o[1], o[2]]
+	player.setup(self, "You", true, look[0], look[1])
 	actors.append(player)
 	for i in BOT_COUNT:
 		var b := Actor.new()
@@ -418,6 +432,8 @@ func _check_win() -> void:
 		if player.alive():
 			player_survived = match_time
 			sfx("victory", Vector3.INF)
+			player.placement = 1
+			_record_career()
 		for a in actors:
 			if a.alive():
 				winner = a
@@ -487,10 +503,23 @@ func on_damage_dealt(attacker: Actor, victim: Actor, amount: float, at: Vector3)
 		hud.add_damage_arc(attacker.global_position)
 
 
+var xp_earned := -1                       # XP from this match once it is recorded (shown on the summary)
+
+
+func _record_career() -> void:
+	## Once per match, for real matches only: placement, kills and XP go into the career shown in the lobby.
+	if xp_earned >= 0 or demo or autotest:
+		return
+	var st := get_node_or_null("/root/Settings")
+	if st:
+		xp_earned = st.record_match(player.placement, player.kills, actors.size())
+
+
 func on_eliminated(victim: Actor, killer: Actor) -> void:
 	victim.placement = alive_count() + 1
 	if victim == player:
 		player_survived = match_time
+		_record_career()
 	var cause := "killed" if (killer != null and killer != victim) else ("storm" if storm.outside(victim.global_position) > 0.0 else "other")
 	stats["deaths_" + cause] = stats.get("deaths_" + cause, 0) + 1
 	if autotest:
@@ -563,6 +592,19 @@ func spawn_pickup(it: Dictionary, pos: Vector3) -> void:
 	pickups.append({"node": n, "model": model, "item": it, "pos": n.position, "born": match_time})
 
 
+func settle_pickups(at: Vector3, radius: float) -> void:
+	## Something broke: loot that was lying on it falls to whatever is below (checked once the colliders are gone).
+	await get_tree().create_timer(0.2).timeout
+	for p in pickups:
+		if Vector2(p.pos.x - at.x, p.pos.z - at.z).length() > radius:
+			continue
+		var hit := ray(p.pos + Vector3(0, 0.1, 0), p.pos - Vector3(0, 80, 0), null, 1)
+		var floor_y: float = (hit.position.y if not hit.is_empty() else terrain.height(p.pos.x, p.pos.z)) + 0.3
+		if p.pos.y - floor_y > 0.25:
+			p["fall_to"] = floor_y
+			p["fall_v"] = 0.0
+
+
 func remove_pickup(p: Dictionary) -> void:
 	pickups.erase(p)
 	p.node.queue_free()
@@ -572,6 +614,13 @@ func _update_pickups(delta: float) -> void:
 	for p in pickups:
 		if not p.get("still", false):
 			p.model.rotate_y(delta * 1.4)
+		if p.has("fall_to"):                               # dropping off a broken floor
+			p.fall_v += 22.0 * delta
+			p.pos.y = maxf(p.pos.y - p.fall_v * delta, p.fall_to)
+			(p.node as Node3D).position = p.pos
+			if p.pos.y <= p.fall_to:
+				p.erase("fall_to")
+				p.erase("fall_v")
 	# walking over ammo, stackables and anything that fits a free slot picks it up
 	pick_tick += 1
 	if pick_tick % 12 == 3:

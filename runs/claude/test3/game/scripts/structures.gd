@@ -36,9 +36,15 @@ const LEVEL := {
 	"house_chimney": [400.0, "brick", 7], "house_furniture": [100.0, "wood", 5],
 	"tower_frame": [700.0, "wood", 8], "tower_roof": [250.0, "wood", 6], "tower_ladder": [150.0, "wood", 4],
 	"cactus": [160.0, "wood", 5],
+	"house_shell": [900.0, "wood", 9], "warehouse_shell": [1400.0, "metal", 9],
 }
 ## Breaking the first part also brings these sibling parts down.
-const COLLAPSE := {"tower_frame": ["tower_roof", "tower_ladder"]}
+const COLLAPSE := {"tower_frame": ["tower_roof", "tower_ladder"],
+		"house_shell": ["house_roof", "house_porch", "house_chimney", "house_furniture", "house_door"],
+		"warehouse_shell": ["warehouse_roof", "warehouse_door", "warehouse_crates"]}
+## Parts that cannot break on their own but go with the building (trim, windows, stairs...).
+const GO_WITH := {"house_shell": ["house_trim", "house_windows", "house_stairs", "house_door_frame"],
+		"warehouse_shell": ["warehouse_frame", "warehouse_roller_door"]}
 
 var game: Node
 var by_body := {}                 # StaticBody3D instance id -> entry
@@ -107,6 +113,14 @@ func setup(g: Node) -> void:
 	weak.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	weak.visible = false
 	add_child(weak)
+
+
+static func _base_name(obj: String) -> String:
+	## The snow and desert looks of a part (house_roof_snow) count as the part itself.
+	for suffix in ["_snow", "_sand", "_dry"]:
+		if obj.ends_with(suffix):
+			return obj.trim_suffix(suffix)
+	return obj
 
 
 func _level_spec(obj: String) -> Variant:
@@ -268,14 +282,27 @@ func destroy(e: Dictionary) -> void:
 				if cs is CollisionShape3D:
 					cs.set_deferred("disabled", true)
 			game.forget_door(n)
-			if COLLAPSE.has(e.name):
+			var base := _base_name(e.name)
+			if COLLAPSE.has(base):
 				for sib in n.get_parent().get_children():
-					if sib is MeshInstance3D and sib.mesh and sib.mesh.resource_path.get_file().get_basename() in COLLAPSE[e.name]:
+					if not (sib is MeshInstance3D and sib.mesh):
+						continue
+					var sn := _base_name(sib.mesh.resource_path.get_file().get_basename())
+					if sn in COLLAPSE[base]:
 						for b in sib.get_children():
 							if b is StaticBody3D and by_body.has(b.get_instance_id()):
 								pending.append([game.match_time + 0.15, by_body[b.get_instance_id()]])
+					elif sn in GO_WITH.get(base, []):
+						sib.visible = false
+						for b in sib.get_children():
+							if b is StaticBody3D:
+								for cs in b.get_children():
+									if cs is CollisionShape3D:
+										cs.set_deferred("disabled", true)
+			game.settle_pickups(e.pos, 10.0 if COLLAPSE.has(base) else 4.0)
 		"build":
 			_remove_piece(e)
+			game.settle_pickups(e.pos, 4.5)
 
 
 # ----------------------------------------------------------------------------- harvesting
@@ -454,6 +481,11 @@ func update_preview(a: Actor, show: bool) -> void:
 func place(a: Actor) -> bool:
 	if a.build_piece == "" or a.state != Actor.State.GROUND:
 		return false
+	if int(a.mats[a.build_mat]) < COST:            # out of this material: build with one you have
+		for m in MATS:
+			if int(a.mats[m]) >= COST:
+				a.build_mat = m
+				break
 	var t := target(a, a.build_piece)
 	if not can_place(a, t, a.build_mat):
 		return false

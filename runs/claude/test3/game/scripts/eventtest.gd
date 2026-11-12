@@ -382,6 +382,95 @@ func _ready() -> void:
 	check("the mega flask fills hp and shield to 100/100", a.using <= 0.0 and a.hp == 100.0 and a.shield == 100.0, "%.0f / %.0f" % [a.hp, a.shield])
 	check("and the flask is used up", a.slots[2] == null)
 	a.spread_mul = 1.0
+	# ---------------------------------------------------------------- spare ammo and the automatic build material
+	for i in Items.SLOTS:
+		a.slots[i] = null
+	a.active = -1
+	a.ammo["heavy"] = 0
+	a.add_item(Items.make("hunting_rifle"))
+	check("a fresh hunting rifle brings spare heavy ammo", int(a.ammo.heavy) >= 8, "%d" % a.ammo.heavy)
+	var hr_i := a.find_item("hunting_rifle")
+	var fresh_rifle: Dictionary = a.slots[hr_i]
+	var before_heavy := int(a.ammo.heavy)
+	a.drop_slot(hr_i)
+	for pk in game.pickups.duplicate():
+		if pk.item == fresh_rifle:
+			game.remove_pickup(pk)
+	a.add_item(fresh_rifle)
+	check("picking the same rifle up again brings no more", int(a.ammo.heavy) == before_heavy)
+	await put(game.events._dry_spot(game.terrain.village + Vector2(26, 30)) + Vector3(0, 0.1, 0))
+	a.mats = {"wood": 0, "brick": 0, "metal": 30}
+	a.build_mat = "wood"
+	a.set_build("wall")
+	check("build mode starts on a material you have", a.build_mat == "metal", a.build_mat)
+	a.build_mat = "wood"
+	var placed: bool = game.structures.place(a)
+	check("building with an empty material uses one you have", placed and int(a.mats.metal) == 20, "metal %d" % a.mats.metal)
+	a.set_build("wall")
+	# ---------------------------------------------------------------- doorway step and a house coming down
+	var S: Structures = game.structures
+	var shell = null
+	for e in S.by_body.values():
+		if e.name == "house_shell" and not e.dead and (shell == null or Vector2(e.pos.x, e.pos.z).distance_to(game.terrain.village) < Vector2(shell.pos.x, shell.pos.z).distance_to(game.terrain.village)):
+			shell = e
+	var house: Node3D = (shell.node as Node3D).get_parent()
+	var door: Node3D = house.find_child("house_door", true, false)
+	var out_dir: Vector3 = (door.global_position - house.global_position)
+	out_dir.y = 0
+	out_dir = out_dir.normalized()
+	var start: Vector3 = door.global_position + out_dir * 2.6
+	start.y = game.terrain.height(start.x, start.z) + 0.1
+	await put(start, atan2(out_dir.x, out_dir.z))                 # facing the door
+	a.in_move = Vector2(0, 1)
+	await frames(90)
+	a.in_move = Vector2.ZERO
+	var d_in: float = Vector2(a.global_position.x - house.global_position.x, a.global_position.z - house.global_position.z).length()
+	check("walking at the front door takes you inside (over the sill)", d_in < house.global_position.distance_to(start) - 2.5, "%.1f m from the middle" % d_in)
+	# and out again, from inside every house on the island
+	var stuck: Array = []
+	for h in game.island.find_children("House_*", "Node3D", true, false):
+		var hd: MeshInstance3D = h.find_child("house_door", true, false)
+		if hd == null:
+			continue
+		# the door node sits at its hinge: aim at the middle of the leaf as it hangs closed
+		var yaw0: float = hd.rotation.y
+		for dd in game.doors:
+			if dd.node == hd:
+				yaw0 = dd.yaw
+		var mid: Vector3 = h.global_transform * (Transform3D(Basis(Vector3.UP, yaw0), hd.position) * hd.get_aabb().get_center())
+		var o: Vector3 = mid - h.global_position
+		o.y = 0
+		o = o.normalized()
+		var inside: Vector3 = mid - o * 2.5
+		var fl: Dictionary = game.ray(inside + Vector3(0, 1.5, 0), inside - Vector3(0, 3, 0), null, 1)
+		await put((fl.position if not fl.is_empty() else inside) + Vector3(0, 0.1, 0), atan2(-o.x, -o.z))
+		a.in_move = Vector2(0, 1)
+		await frames(150)
+		a.in_move = Vector2.ZERO
+		if (a.global_position - mid).dot(o) < 1.0:
+			var lp: Vector3 = h.global_transform.affine_inverse() * a.global_position
+			var ls: Vector3 = h.global_transform.affine_inverse() * inside
+			var cols := []
+			a.in_move = Vector2(0, 1)
+			await frames(2)
+			for ci in a.get_slide_collision_count():
+				var kc := a.get_slide_collision(ci)
+				var co = kc.get_collider()
+				var ln: Vector3 = h.global_transform.basis.inverse() * kc.get_normal()
+				cols.append("%s n%s at%s" % [co.get_parent().name if co else "?", ln.snapped(Vector3(0.1, 0.1, 0.1)), (h.global_transform.affine_inverse() * kc.get_position()).snapped(Vector3(0.1, 0.1, 0.1))])
+			a.in_move = Vector2.ZERO
+			stuck.append("%s(end %s hits %s)" % [h.name, lp.snapped(Vector3(0.1, 0.1, 0.1)), cols])
+	check("you can walk out of every house through its front door", stuck.is_empty(), "stuck in " + ", ".join(stuck))
+	var up_spot: Vector3 = house.global_transform * Vector3(-0.5, 3.35, 0.4)
+	game.spawn_pickup({"ammo": "light"}, up_spot)
+	var loot: Dictionary = game.pickups[game.pickups.size() - 1]
+	await put(start + out_dir * 6.0)
+	S.destroy(shell)
+	await frames(120)
+	var trim: Node3D = house.find_child("house_trim", true, false)
+	check("a destroyed house takes its trim and roof with it", not (shell.node as Node3D).visible and not trim.visible)
+	check("loot from the upper floor falls to the ground", loot.pos.y < up_spot.y - 2.0, "%.1f -> %.1f" % [up_spot.y, loot.pos.y])
+	check("house walls give wood when farmed", S.LEVEL.has("house_shell") and S.LEVEL["house_shell"][1] == "wood")
 	print("EVENTTEST\n" + "\n".join(lines))
 	print("EVENTTEST %s  (%d checks, %d failed)" % ["OK" if fails == 0 else "FAILED", lines.size(), fails])
 	get_tree().quit()

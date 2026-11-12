@@ -14,7 +14,7 @@ const EYE := Vector3(0, 1.55, 0)
 const PICKAXE_DAMAGE := 20.0
 const CROUCH_SPEED := 3.0
 const SWIM_SPEED := 3.6
-const STAND_H := 1.8
+const STAND_H := 1.7                     # collision height: a little under the 1.8 m model, so house doors with a sill fit
 const CROUCH_H := 1.2
 const SWIM_IN := 1.3                     # water this deep at the feet: start swimming
 const SWIM_OUT := 1.0                    # shallower than this with ground underfoot: walk again
@@ -92,9 +92,9 @@ func setup(g: Node, nm: String, player: bool, outfit: Color, accent: Color) -> v
 	var cs := CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
 	cap.radius = 0.3
-	cap.height = 1.8
+	cap.height = STAND_H
 	cs.shape = cap
-	cs.position = Vector3(0, 0.9, 0)
+	cs.position = Vector3(0, STAND_H / 2.0, 0)
 	add_child(cs)
 	shape_node = cs
 	body = Character.new()
@@ -317,6 +317,8 @@ func _ground_move(delta: float) -> void:
 			return
 	in_jump = false
 	var was_air := not is_on_floor()
+	if not was_air and not sliding:
+		_step_up(Vector3(velocity.x, 0, velocity.z))
 	move_and_slide()
 	if is_on_floor():
 		if was_air:
@@ -328,6 +330,37 @@ func _ground_move(delta: float) -> void:
 	_audio_steps(delta, was_air)
 	if depth() > SWIM_IN:
 		_enter_water()
+
+
+const STEP_H := 0.45                     # door sills, porch steps and stair lips are walked over, not jumped
+
+
+func _step_up(v: Vector3) -> void:
+	## Walking into a low ledge: lift onto it if there is room. The lift is the ledge's own height, measured
+	## first, so a sill under a low door frame still fits (lifting the full STEP_H would hit the frame).
+	if v.length() < 0.5:
+		return
+	var dir := v.normalized()
+	var fwd := dir * 0.32
+	var xf := global_transform
+	var hit := KinematicCollision3D.new()
+	if not test_move(xf, fwd, hit):
+		return                                         # nothing in the way
+	if hit.get_normal().y > 0.7:
+		return                                         # a slope the floor handling copes with
+	var probe := global_position + dir * 0.45
+	var top: Dictionary = game.ray(probe + Vector3(0, STEP_H + 0.05, 0), probe - Vector3(0, 0.05, 0), self, 1)
+	if top.is_empty() or (top.normal as Vector3).y < 0.35:          # bevelled tops count
+		return
+	var rise: float = top.position.y - global_position.y
+	if rise <= 0.03 or rise > STEP_H:
+		return
+	var up := Vector3(0, rise + 0.03, 0)
+	if test_move(xf, up):
+		return                                         # no headroom
+	if test_move(xf.translated(up), fwd):
+		return                                         # a wall, not a step
+	global_position += up + fwd * 0.5
 
 
 func _audio_steps(delta: float, was_air: bool) -> void:
@@ -566,6 +599,11 @@ func set_build(piece: String) -> void:
 	in_fire = false
 	if build_piece != "":
 		body.hold("")
+		if int(mats[build_mat]) < Structures.COST:     # start on a material there is enough of
+			for m in Structures.MATS:
+				if int(mats[m]) >= Structures.COST:
+					build_mat = m
+					break
 	else:
 		_refresh_held()
 
@@ -630,12 +668,22 @@ func add_item(it: Dictionary) -> bool:
 	var f := free_slot()
 	if f < 0:
 		return false
+	_spare_ammo(it)
 	slots[f] = it
 	if active == -1 and d.kind == "weapon":
 		select(f)
 	elif f == active:
 		_refresh_held()
 	return true
+
+
+func _spare_ammo(it: Dictionary) -> void:
+	## A weapon picked up for the first time comes with spare ammo of its type (two magazines, at least a box).
+	if not it.has("id") or Items.def(it).kind != "weapon" or it.get("used", false):
+		return
+	it["used"] = true                                  # dropped and picked up again, it brings nothing more
+	var d: Dictionary = Items.def(it)
+	ammo[d.ammo] += maxi(int(d.mag) * 2, int(Items.AMMO_PICKUP[d.ammo]))
 
 
 func drop_slot(i: int) -> void:
@@ -655,6 +703,7 @@ func swap_with(it: Dictionary) -> void:
 	## Inventory full: the held slot is dropped and replaced.
 	var i := active if active >= 0 else 0
 	drop_slot(i)
+	_spare_ammo(it)
 	slots[i] = it
 	select(i)
 	_refresh_held()

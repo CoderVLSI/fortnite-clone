@@ -198,6 +198,7 @@ func _build_graphics() -> void:
 	_row(p, "FPS limit", _options(["30", "60", "120", "Unlimited"], Settings.FPS_VALUES.find(Settings.fps_limit), func(i: int) -> void:
 		Settings.fps_limit = Settings.FPS_VALUES[i]
 		Settings.apply_graphics()))
+	_row(p, "Show FPS", _check("", Settings.show_fps, func(on: bool) -> void: Settings.show_fps = on))
 
 
 func _build_audio() -> void:
@@ -207,6 +208,10 @@ func _build_audio() -> void:
 		Settings.volume = x / 100.0
 		Settings.apply_volume())
 	_row(p, "Master volume", v[0], v[1])
+	var mv := _slider(0, 100, 1, Settings.music_volume * 100.0, "%d%%", func(x: float) -> void:
+		Settings.music_volume = x / 100.0
+		Settings.apply_volume())
+	_row(p, "Music volume", mv[0], mv[1])
 
 
 func _build_gameplay() -> void:
