@@ -332,6 +332,220 @@ func _ready() -> void:
 	check("floor loot rolls every new item", all_new, str(seen))
 	check("the mega flask is the rarest heal", seen.get("mega_flask", 0) < seen.get("hydro_juice", 0) and seen.get("hydro_juice", 0) < seen.get("bandages", 0))
 	check("existing weapons stay the most common", seen.get("assault_rifle", 0) > seen.get("smg", 0) and seen.get("pistol", 0) > seen.get("burst_rifle", 0))
+	# ---------------------------------------------------------------- mythic weapons
+	check("mythic is rarity 5: a sixth rarity", Items.RARITY_NAMES.size() == 6 and Items.RARITY_NAMES[5] == "Mythic" and Items.RARITY_COLORS.size() == 6 and Items.RARITY_COLORS[5] != Items.RARITY_COLORS[4])
+	var mythic_ok := true
+	for id in Items.MYTHIC_IDS:
+		var mi := Items.make(id, 2)
+		mythic_ok = mythic_ok and mi.rarity == 5 and Items.DEFS[id].get("mythic", false) and Items.label(mi).begins_with("Mythic ")
+	check("Items.make gives every mythic rarity 5 whatever is asked", mythic_ok)
+	check("the four mythics are mapped to sounds and have models", game.audio.has_sound("web_shooters") and game.audio.has_sound("ravage_grasp") and game.audio.has_sound("charge_shotgun") and game.audio.has_sound("shockwave_launcher") and ResourceLoader.exists("res://assets/web_shooters.glb") and ResourceLoader.exists("res://assets/shockwave_launcher.glb"))
+	var m_seen := 0
+	var rr2 := RandomNumberGenerator.new()
+	rr2.seed = 99
+	for i in 5000:
+		var li2 := Items.roll_floor(rr2)
+		if li2.has("id") and Items.DEFS[li2.id].get("mythic", false):
+			m_seen += 1
+		var lw := Items.roll_weapon(rr2)
+		if Items.DEFS[lw.id].get("mythic", false) or lw.rarity > 4:
+			m_seen += 1
+	check("mythics never come from roll_floor or roll_weapon (5000 rolls)", m_seen == 0, "%d mythics" % m_seen)
+	var bench0: Dictionary = game.events.benches[1]
+	await put(bench0.pos + Vector3(1.6, 0.2, 0))
+	a.slots = [Items.make("charge_shotgun"), null, null, null, null]
+	a.select(0)
+	a.gold = 999
+	check("an upgrade bench refuses a mythic", game.events.bench_near(a) != null and not game.events.upgrade(a) and a.item().rarity == 5 and a.gold == 999)
+	check("mythic damage ignores rarity bonuses", absf(Items.damage(a.item()) - Items.DEFS.charge_shotgun.damage) < 0.01)
+	var mp0: Vector3 = E._dry_spot(T.village + Vector2(28, -30))
+	await put(mp0 + Vector3(0, 0.1, 0))
+	var wh: float = a.hp
+	# --- web shooters
+	equip("web_shooters")
+	check("web shooters never run dry: loaded stays and the HUD sees infinite ammo", Items.infinite_ammo(a.item()) and a.item().loaded == 1)
+	var w_start := a.global_position
+	var w_end := mp0 + Vector3(0, 34.0, -28.0)
+	check("web_swing_to starts a swing", a.web_swing_to(w_end) and a.is_swinging())
+	var w_max := 0.0
+	var w_released := false
+	var w_airborne := false
+	for i in 700:
+		await frames(1)
+		var hd := Vector2(a.global_position.x - w_start.x, a.global_position.z - w_start.z).length()
+		w_max = maxf(w_max, hd)
+		if not w_released and a.is_swinging() and a.web_t > 0.9 and a.velocity.y > 2.0 and a.velocity.length() > 8.0:
+			a.web_release()
+			w_released = true
+		if w_released and not a.is_on_floor():
+			w_airborne = true
+		if w_released and w_airborne and a.web_state == 0 and a.is_on_floor():
+			break
+	check("the web swing carries the player at least 15 m", w_max >= 15.0, "%.1f m" % w_max)
+	check("and they land without fall damage after the release", w_released and a.web_state == 0 and a.hp >= wh - 0.01, "hp %.0f of %.0f, released %s" % [a.hp, wh, w_released])
+	await put(mp0 + Vector3(0, 0.1, 0))
+	a.is_player = false
+	a.aim_pitch = -0.5
+	equip("web_shooters")
+	a.fire_cd = 0.0
+	a.in_fire = true
+	await frames(4)
+	var held_swing: bool = a.is_swinging()
+	await frames(30)
+	var still_swinging: bool = a.is_swinging()
+	a.in_fire = false
+	await frames(3)
+	check("firing the web at the ground ahead swings you; the swing lasts while fire is held, ends on release", held_swing and still_swinging and not a.is_swinging(), "%s %s %s" % [held_swing, still_swinging, a.is_swinging()])
+	check("a short cooldown follows the release", a.fire_cd > 0.0 and a.fire_cd <= 0.4)
+	await frames(240)
+	a.web_state = 0
+	# --- Ravage's Grasp
+	var gp: Vector3 = base + Vector3(0, 0.1, 0)
+	await put(gp)
+	equip("ravage_grasp")
+	var gvp := gp + Vector3(0, 0, -14)
+	victim.process_mode = Node.PROCESS_MODE_INHERIT
+	victim.state = Actor.State.GROUND
+	victim.global_position = gvp
+	victim.velocity = Vector3.ZERO
+	victim.hp = 100.0
+	victim.shield = 40.0
+	victim.stun_t = 0.0
+	a.aim_pitch = 0.0
+	await frames(8)
+	var gh0: float = victim.hp + victim.shield
+	await pull(2)
+	await frames(16)
+	check("the grasp yanks an enemy towards you and stuns them", victim.global_position.distance_to(a.global_position) < 6.0 and victim.stun_t > 0.0, "%.1f m, stun %.2f" % [victim.global_position.distance_to(a.global_position), victim.stun_t])
+	await frames(34)
+	var gdist: float = victim.global_position.distance_to(a.global_position)
+	var gdealt: float = gh0 - (victim.hp + victim.shield)
+	check("the enemy ends up within 3 m", gdist < 3.0, "%.1f m" % gdist)
+	check("and takes about 60 damage, shield first", absf(gdealt - 60.0) < 1.0 and victim.shield == 0.0 and victim.hp > 75.0, "%.0f damage, shield %.0f hp %.0f" % [gdealt, victim.shield, victim.hp])
+	check("the grasp has a 3 s cooldown", a.fire_cd > 1.5 and Items.DEFS.ravage_grasp.cooldown == 3.0, "%.1f" % a.fire_cd)
+	# a stunned actor cannot move
+	victim.stun_t = 0.6
+	victim.in_move = Vector2(0, 1)
+	var sp0 := victim.global_position
+	await frames(20)
+	check("a stunned actor cannot walk", victim.global_position.distance_to(sp0) < 0.3, "%.2f m" % victim.global_position.distance_to(sp0))
+	victim.in_move = Vector2.ZERO
+	victim.stun_t = 0.0
+	# grapple to a wall
+	var S0: Structures = game.structures
+	await put(mp0 + Vector3(0, 0.1, 6))
+	a.mats = {"wood": 0, "brick": 0, "metal": 40}
+	a.build_mat = "metal"
+	a.set_build("wall")
+	var wall_ok: bool = S0.place(a)
+	a.set_build("wall")
+	var wall = null
+	for e in S0.pieces.values():
+		wall = e
+	check("a wall piece is built for the grasp and shockwave tests", wall_ok and wall != null)
+	if wall != null:
+		await frames(300)
+		var wp: Vector3 = wall.pos
+		var from_p := Vector3(wp.x, mp0.y, wp.z) + Vector3(0, 0.1, 13)
+		from_p.y = T.height(from_p.x, from_p.z) + 0.1
+		await put(from_p)
+		a.aim_yaw = 0.0
+		a.aim_pitch = atan2(wp.y - (from_p.y + 1.55), 13.0)
+		equip("ravage_grasp")
+		var d0 := Vector2(a.global_position.x - wp.x, a.global_position.z - wp.z).length()
+		await pull(2)
+		await frames(75)
+		var d1 := Vector2(a.global_position.x - wp.x, a.global_position.z - wp.z).length()
+		check("the grasp on a wall pulls you towards it", d1 < d0 - 7.0 and a.grasp_pull == false, "%.1f m -> %.1f m" % [d0, d1])
+		# --- shockwave launcher, burst on a structure and on a bystander
+		await put(from_p + Vector3(0, 0, 5))
+		var burst_at := Vector3(wp.x, wp.y, wp.z + 2.0)
+		victim.global_position = burst_at + Vector3(3.0, -wp.y + T.height(burst_at.x + 3.0, burst_at.z) + 0.1, 0)
+		victim.state = Actor.State.GROUND
+		victim.velocity = Vector3.ZERO
+		victim.hp = 100.0
+		victim.shield = 0.0
+		victim.stun_t = 0.0
+		await frames(10)
+		var vy0: float = victim.global_position.y
+		var wall_hp0: float = wall.hp
+		game.shock_burst(burst_at, {"owner": a, "damage": 15.0, "radius": 7.5, "knock": 34.0, "struct": 400.0})
+		await frames(1)
+		check("the shockwave throws a nearby player up like a launch pad", victim.launched and victim.state == Actor.State.SKYDIVE and victim.velocity.y > 12.0, "vy %.1f" % victim.velocity.y)
+		var vpeak := 0.0
+		var vhd := 0.0
+		for i in 120:
+			await frames(1)
+			vpeak = maxf(vpeak, victim.global_position.y - vy0)
+			vhd = maxf(vhd, Vector2(victim.global_position.x - burst_at.x, victim.global_position.z - burst_at.z).length())
+		check("and far up and away", vpeak > 8.0 and vhd > 6.0, "up %.1f m, out %.1f m" % [vpeak, vhd])
+		check("the shockwave does small damage to players", victim.hp < 100.0 and victim.hp > 82.0, "%.1f hp" % victim.hp)
+		check("and heavy damage to built structures", wall.dead or wall.hp < wall_hp0 - 100.0, "%.0f -> %.0f hp" % [wall_hp0, wall.hp])
+		for i in 400:
+			await frames(1)
+			if victim.state == Actor.State.GROUND and victim.is_on_floor():
+				break
+		check("no fall damage from the knock", victim.hp > 82.0, "%.1f hp" % victim.hp)
+		# a real orb: fired from the launcher it arcs, bursts and also launches the shooter standing close to the wall
+		await put(Vector3(wp.x, 0, wp.z) + Vector3(0, T.height(wp.x, wp.z + 4.0) + 0.1, 4.0))
+		var sw := equip("shockwave_launcher")
+		a.aim_yaw = 0.0
+		a.aim_pitch = 0.05
+		a.fire_cd = 0.0
+		var sw0: int = sw.loaded
+		var orbs0: int = game.projectiles.size()
+		await pull(2)
+		check("the launcher fires a slow orb and uses one rocket-type round (mag 4)", sw0 - sw.loaded == 1 and game.projectiles.size() == orbs0 + 1 and sw.loaded == 3 and Items.DEFS.shockwave_launcher.mag == 4, "loaded %d" % sw.loaded)
+		var orb_ok := false
+		for i in 200:
+			await frames(1)
+			if a.launched:
+				orb_ok = true
+				break
+		check("a burst knocks the shooter up too (no self damage)", orb_ok and a.hp >= wh - 0.01, "hp %.0f" % a.hp)
+		for i in 500:
+			await frames(1)
+			if a.state == Actor.State.GROUND and a.is_on_floor():
+				break
+	# --- charge shotgun
+	a.is_player = false
+	await put(gp)
+	var cs := equip("charge_shotgun")
+	victim.global_position = gp + Vector3(0, 0, -7)
+	victim.state = Actor.State.GROUND
+	victim.velocity = Vector3.ZERO
+	victim.stun_t = 0.0
+	a.aim_pitch = 0.0
+	await frames(8)
+	victim.hp = 1000.0
+	victim.shield = 0.0
+	a.fire_cd = 0.0
+	a.in_fire = true
+	await frames(4)
+	a.in_fire = false
+	await frames(4)
+	var dmg_tap: float = 1000.0 - victim.hp
+	check("an uncharged shot fires on release and is weak", dmg_tap > 0.0 and cs.loaded == 5, "%.0f damage" % dmg_tap)
+	await frames(60)
+	victim.hp = 1000.0
+	a.fire_cd = 0.0
+	a.in_fire = true
+	await frames(30)
+	var half_charge: float = a.charge
+	await frames(40)
+	var full_charge: float = a.charge
+	check("holding fire charges 0 to 1 in about a second", half_charge > 0.3 and half_charge < 0.7 and full_charge >= 0.99, "%.2f then %.2f" % [half_charge, full_charge])
+	check("nothing fires while the trigger is held", cs.loaded == 5)
+	a.in_fire = false
+	await frames(4)
+	var dmg_full: float = 1000.0 - victim.hp
+	check("a full charge deals about 2x the damage of the base shot and more than a tap", dmg_full > dmg_tap * 2.0 and absf(dmg_full - 2.0 * 90.0) < 5.0, "%.0f vs %.0f" % [dmg_full, dmg_tap])
+	check("a full charge is tighter than an uncharged shot", Items.DEFS.charge_shotgun.charge_spread < Items.DEFS.charge_shotgun.spread * 0.5 and a.charge == 0.0)
+	check("the charge shotgun uses shells, mag 6", Items.DEFS.charge_shotgun.ammo == "shells" and Items.DEFS.charge_shotgun.mag == 6 and cs.loaded == 4)
+	a.is_player = true
+	a.spread_mul = 1.0
+	a.select(-1)
+	await put(base + Vector3(0, 0.1, 0))
 	# ---------------------------------------------------------------- new heals
 	a.slots = [Items.make("bandages", 0, 15), Items.make("hydro_juice", 0, 2), Items.make("mega_flask"), null, null]
 	check("bandages stack to 15, hydro to 2, flask to 1", Items.DEFS.bandages.stack == 15 and Items.DEFS.hydro_juice.stack == 2 and Items.DEFS.mega_flask.stack == 1)

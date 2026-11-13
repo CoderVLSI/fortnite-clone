@@ -1,0 +1,36 @@
+{
+ "asset": "shockwave_launcher",
+ "triangles": 1124,
+ "budget": 7000,
+ "per_object": {
+  "mythic_shock_body": 704,
+  "mythic_shock_bell": 272,
+  "mythic_shock_emitter": 44,
+  "mythic_shock_cells": 84,
+  "mythic_shock_trigger": 20
+ },
+ "dimensions_m": [
+  0.184,
+  0.73,
+  0.327
+ ],
+ "min": [
+  -0.092,
+  -0.51,
+  -0.09
+ ],
+ "max": [
+  0.092,
+  0.22,
+  0.237
+ ],
+ "objects": 5,
+ "materials": [
+  "mat_shock_dark",
+  "mat_shock_emitter",
+  "mat_shock_slate",
+  "mat_shock_steel",
+  "mat_shock_yellow"
+ ],
+ "problems": []
+}

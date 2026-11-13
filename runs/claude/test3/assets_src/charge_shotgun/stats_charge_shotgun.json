@@ -1,0 +1,38 @@
+{
+ "asset": "charge_shotgun",
+ "triangles": 1812,
+ "budget": 7000,
+ "per_object": {
+  "mythic_charge_barrels": 348,
+  "mythic_charge_body": 740,
+  "mythic_charge_coil": 600,
+  "mythic_charge_core": 28,
+  "mythic_charge_cage": 76,
+  "mythic_charge_trigger": 20
+ },
+ "dimensions_m": [
+  0.1205,
+  0.77,
+  0.3
+ ],
+ "min": [
+  -0.0602,
+  -0.47,
+  -0.09
+ ],
+ "max": [
+  0.0602,
+  0.3,
+  0.21
+ ],
+ "objects": 6,
+ "materials": [
+  "mat_charge_core",
+  "mat_charge_dark",
+  "mat_charge_rust",
+  "mat_charge_steel",
+  "mat_charge_wood",
+  "mat_charge_yellow"
+ ],
+ "problems": []
+}

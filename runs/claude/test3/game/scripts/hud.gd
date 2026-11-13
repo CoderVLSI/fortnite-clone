@@ -410,13 +410,17 @@ func _draw_hotbar(sz: Vector2, s: Actor) -> void:
 				var words: PackedStringArray = d.name.split(" ")
 				for wi in words.size():
 					txt(r.position + Vector2(0, 36 + wi * 15), words[wi], 13, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, box)
-			if d.kind == "weapon":
+			if d.kind == "weapon" and Items.infinite_ammo(it):
+				_draw_cooldown_slot(r, it, act, s)
+			elif d.kind == "weapon":
 				txt(r.position + Vector2(0, box - 7), "%d" % it.loaded, 14, Color(1, 1, 1, 0.95), HORIZONTAL_ALIGNMENT_RIGHT, box - 6)
 			else:
 				txt(r.position + Vector2(0, box - 7), "x%d" % it.count, 14, Color(1, 1, 1, 0.95), HORIZONTAL_ALIGNMENT_RIGHT, box - 6)
 	# ammo for the weapon in hand
 	var held = s.item()
-	if held != null and Items.def(held).kind == "weapon":
+	if held != null and Items.def(held).kind == "weapon" and Items.infinite_ammo(held):
+		_draw_cooldown_panel(sz, y0, held, s)
+	elif held != null and Items.def(held).kind == "weapon":
 		var d2: Dictionary = Items.def(held)
 		panel(Rect2(sz.x - 260, y0 - 74, 242, 60))
 		txt(Vector2(sz.x - 250, y0 - 28), "%d" % held.loaded, 40, Color.WHITE if held.loaded > 0 else Color(1.0, 0.4, 0.3))
@@ -560,6 +564,9 @@ func _draw_crosshair(sz: Vector2, s: Actor, ctl: Node) -> void:
 		draw_circle(c, 3.5, Color(0, 0, 0, 0.6))
 		draw_circle(c, 2.2, Color(1, 1, 1, 0.95))
 		return
+	if d.get("mythic", false):
+		_draw_mythic_reticle(c, sz, s, it, d)
+		return
 	var gap := clampf(_spread_px(sz, ctl, s.spread_deg(d)), 4.0, sz.y * 0.06)          # never wider than a small part of the screen
 	match it.id:
 		"shotgun", "tactical_shotgun":              # a ring about half the pellet spread: compact, still grows with bloom
@@ -690,3 +697,70 @@ func _draw_end(sz: Vector2, p: Actor) -> void:
 	txt(Vector2(0, band.position.y + 88), "VICTORY!  LAST ONE STANDING" if won else "MATCH OVER", 64 if won else 56, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, sz.x)
 	var line := "#1 of %d   ·   %d eliminations" % [game.actors.size(), p.kills] if won else "You placed #%d   ·   %d eliminations   ·   %s won" % [p.placement, p.kills, game.winner.display_name if game.winner else "Nobody"]
 	txt(Vector2(0, band.position.y + 140), line, 26, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, sz.x)
+
+
+# ----------------------------------------------------------------------------- mythic weapons (ammo panel, hotbar, reticle)
+
+func _draw_cooldown_slot(r: Rect2, it: Dictionary, act: bool, s: Actor) -> void:
+	## A hotbar box for a cooldown mythic: an infinity sign, and a fill that drains while it recharges.
+	var box := r.size.x
+	var frac := s.mythic_cooldown_frac() if act else 0.0
+	if frac > 0.0:
+		draw_rect(Rect2(r.position + Vector2(0, box * (1.0 - frac)), Vector2(box, box * frac)), Color(0, 0, 0, 0.45))
+	txt(r.position + Vector2(0, box - 7), "\u221e", 18, Color(1, 1, 1, 0.95), HORIZONTAL_ALIGNMENT_RIGHT, box - 6)
+
+
+func _draw_cooldown_panel(sz: Vector2, y0: float, held: Dictionary, s: Actor) -> void:
+	panel(Rect2(sz.x - 260, y0 - 74, 242, 60))
+	var frac := s.mythic_cooldown_frac()
+	txt(Vector2(sz.x - 250, y0 - 22), "\u221e", 44, Color.WHITE if frac <= 0.0 else Color(1.0, 0.55, 0.3))
+	txt(Vector2(sz.x - 260, y0 - 50), Items.label(held), 14, Items.RARITY_COLORS[held.rarity], HORIZONTAL_ALIGNMENT_RIGHT, 232)
+	var bar := Rect2(sz.x - 170, y0 - 30, 144, 8)
+	draw_rect(bar, Color(0, 0, 0, 0.5))
+	draw_rect(Rect2(bar.position, Vector2(bar.size.x * (1.0 - frac), bar.size.y)), Color(0.45, 0.9, 1.0) if frac <= 0.0 else Color(1.0, 0.55, 0.3))
+	txt(Vector2(sz.x - 260, y0 - 18), "ready" if frac <= 0.0 else "recharging", 12, Color(0.85, 0.88, 0.92), HORIZONTAL_ALIGNMENT_RIGHT, 232)
+
+
+func _draw_mythic_reticle(c: Vector2, sz: Vector2, s: Actor, it: Dictionary, d: Dictionary) -> void:
+	## One reticle for the four mythics: web = ring with a gap for 70 m, grasp = ring with cooldown arc, charge shotgun = the
+	## ring closes in and fills as it charges (see _draw_charge_indicator), shockwave = ring with a burst tick.
+	var col := Color(1, 1, 1, 0.95)
+	match it.id:
+		"web_shooters":
+			_xring(c, 12.0, 1.5)
+			for dv in [Vector2(1, 1), Vector2(-1, 1), Vector2(1, -1), Vector2(-1, -1)]:
+				_xline(c + dv.normalized() * 15.0, c + dv.normalized() * 24.0, 1.5)
+			draw_circle(c, 1.6, col)
+			if s.web_state == 1:
+				_xring(c, 8.0, 2.0)
+		"ravage_grasp":
+			_xring(c, 13.0, 2.0)
+			draw_circle(c, 2.0, Color(1.0, 0.35, 0.3, 0.95))
+			var frac := s.mythic_cooldown_frac()
+			if frac > 0.0:
+				draw_arc(c, 19.0, -PI / 2.0, -PI / 2.0 + TAU * (1.0 - frac), 32, Color(1.0, 0.45, 0.3, 0.9), 3.0)
+		"charge_shotgun":
+			_draw_charge_indicator(c, s, d)
+		_:
+			_xring(c, 14.0, 2.0)
+			draw_circle(c, 2.0, Color(0.6, 0.9, 1.0, 0.95))
+			for dv in [Vector2(1, 0), Vector2(-1, 0)]:
+				_xline(c + dv * 18.0, c + dv * 28.0, 2.0)
+
+
+func _draw_charge_indicator(c: Vector2, s: Actor, d: Dictionary) -> void:
+	## Charge shotgun: a wide ring that shrinks to a tight one as the charge fills, plus an arc around it.
+	var k: float = s.charge
+	var spread_wide := 40.0
+	var spread_tight := 11.0
+	var r: float = lerpf(spread_wide, spread_tight, k)
+	_xring(c, r, 2.0)
+	for dv in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
+		_xline(c + dv * (r - 5.0), c + dv * (r + 5.0), 2.0)
+	draw_circle(c, 1.8, Color(1, 1, 1, 0.95))
+	if k > 0.0:
+		var col := Color(0.35, 0.9, 1.0, 0.95).lerp(Color(1.0, 0.85, 0.3, 1.0), k)
+		draw_arc(c, r + 10.0, -PI / 2.0, -PI / 2.0 + TAU * k, 40, Color(0, 0, 0, 0.5), 5.0)
+		draw_arc(c, r + 10.0, -PI / 2.0, -PI / 2.0 + TAU * k, 40, col, 3.0)
+		if k >= 1.0:
+			draw_arc(c, r + 16.0, 0.0, TAU, 40, Color(1.0, 0.9, 0.4, 0.6), 2.0)

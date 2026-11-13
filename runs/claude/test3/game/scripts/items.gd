@@ -2,11 +2,11 @@
 class_name Items
 extends RefCounted
 
-const RARITY_NAMES := ["Common", "Uncommon", "Rare", "Epic", "Legendary"]
-const RARITY_COLORS := [Color(0.72, 0.74, 0.76), Color(0.35, 0.8, 0.25), Color(0.25, 0.6, 1.0), Color(0.72, 0.35, 0.95), Color(1.0, 0.75, 0.2)]
+const RARITY_NAMES := ["Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic"]
+const RARITY_COLORS := [Color(0.72, 0.74, 0.76), Color(0.35, 0.8, 0.25), Color(0.25, 0.6, 1.0), Color(0.72, 0.35, 0.95), Color(1.0, 0.75, 0.2), Color(1.0, 0.27, 0.12)]
 const AMMO_TYPES := ["light", "medium", "heavy", "shells", "rockets"]
-const AMMO_COLORS := {"light": Color(0.95, 0.85, 0.5), "medium": Color(0.9, 0.6, 0.3), "heavy": Color(0.6, 0.75, 0.95), "shells": Color(0.9, 0.3, 0.25), "rockets": Color(0.55, 0.7, 0.35)}
-const AMMO_PICKUP := {"light": 24, "medium": 30, "heavy": 8, "shells": 8, "rockets": 3}
+const AMMO_COLORS := {"light": Color(0.95, 0.85, 0.5), "medium": Color(0.9, 0.6, 0.3), "heavy": Color(0.6, 0.75, 0.95), "shells": Color(0.9, 0.3, 0.25), "rockets": Color(0.55, 0.7, 0.35), "none": Color(0.8, 0.85, 0.95)}
+const AMMO_PICKUP := {"light": 24, "medium": 30, "heavy": 8, "shells": 8, "rockets": 3, "none": 0}
 const SLOTS := 5
 const MAT_NAMES := {"wood": "Wood", "brick": "Brick", "metal": "Metal"}
 const MAT_COLORS := {"wood": Color(0.85, 0.6, 0.3), "brick": Color(0.88, 0.42, 0.32), "metal": Color(0.62, 0.7, 0.82)}
@@ -25,6 +25,12 @@ const DEFS := {
 	"sniper_rifle": {"name": "Bolt Sniper", "kind": "weapon", "asset": "sniper_rifle", "ammo": "heavy", "damage": 105.0, "rate": 0.4, "mag": 1, "reload": 2.6, "spread": 0.15, "range": 320.0, "pellets": 1, "auto": false},
 	"rocket_launcher": {"name": "Rocket Launcher", "kind": "weapon", "asset": "rocket_launcher", "ammo": "rockets", "damage": 110.0, "rate": 0.75, "mag": 1, "reload": 3.2, "spread": 0.4, "range": 140.0, "pellets": 1, "auto": false, "rocket": true, "radius": 5.5},
 	"hunting_rifle": {"name": "Hunting Rifle", "kind": "weapon", "asset": "hunting_rifle", "ammo": "heavy", "damage": 86.0, "rate": 0.85, "mag": 1, "reload": 2.2, "spread": 0.35, "range": 180.0, "pellets": 1, "auto": false},
+	# Mythic weapons (rarity 5, dropped by bosses only: never rolled as loot, never upgradable). "ammo": "none" ones never run
+	# dry (loaded stays at mag; Actor.ammo["none"] is a fixed pool) and use `cooldown` seconds instead of ammo.
+	"web_shooters": {"name": "Weaver's Web Shooters", "kind": "weapon", "asset": "web_shooters", "mythic": true, "ammo": "none", "damage": 0.0, "rate": 2.5, "mag": 1, "reload": 1.0, "spread": 0.0, "range": 70.0, "pellets": 1, "auto": false, "cooldown": 0.4, "web": true},
+	"ravage_grasp": {"name": "Ravage's Grasp", "kind": "weapon", "asset": "ravage_grasp", "mythic": true, "ammo": "none", "damage": 60.0, "rate": 0.33, "mag": 1, "reload": 1.0, "spread": 0.0, "range": 30.0, "pellets": 1, "auto": false, "cooldown": 3.0, "grasp": true, "stun": 0.6},
+	"charge_shotgun": {"name": "Tinker's Charge Shotgun", "kind": "weapon", "asset": "charge_shotgun", "mythic": true, "ammo": "shells", "damage": 9.0, "rate": 1.4, "mag": 6, "reload": 4.2, "spread": 9.0, "range": 30.0, "pellets": 10, "auto": false, "charge": 1.0, "charge_spread": 1.6, "charge_min_mul": 0.7, "charge_max_mul": 2.0},
+	"shockwave_launcher": {"name": "Tinker's Shockwave Launcher", "kind": "weapon", "asset": "shockwave_launcher", "mythic": true, "ammo": "rockets", "damage": 15.0, "rate": 0.7, "mag": 4, "reload": 3.6, "spread": 0.4, "range": 90.0, "pellets": 1, "auto": false, "orb": true, "radius": 7.5, "knock": 34.0, "struct_damage": 500.0},
 	"grenade": {"name": "Grenade", "kind": "throwable", "asset": "grenade", "stack": 6, "damage": 100.0, "radius": 5.5},
 	"medkit": {"name": "Med Kit", "kind": "heal", "asset": "medkit", "stack": 3, "amount": 100.0, "use_time": 6.0, "cap": 100.0},
 	"shield_potion": {"name": "Big Shield", "kind": "shield", "asset": "shield_potion", "stack": 3, "amount": 50.0, "use_time": 4.0, "cap": 100.0},
@@ -35,13 +41,15 @@ const DEFS := {
 	"mega_flask": {"name": "Mega Flask", "kind": "heal", "asset": "mega_flask", "stack": 1, "amount": 100.0, "use_time": 10.0, "cap": 100.0, "shield_amount": 100.0, "shield_cap": 100.0},
 	"launch_pad": {"name": "Launch Pad", "kind": "launcher", "asset": "launch_pad", "stack": 1},
 }
+const MYTHIC_IDS := ["web_shooters", "ravage_grasp", "charge_shotgun", "shockwave_launcher"]
 const WEAPON_IDS := ["pistol", "shotgun", "assault_rifle", "sniper_rifle", "rocket_launcher", "smg", "tactical_shotgun", "burst_rifle", "hunting_rifle"]
 
 
 static func make(id: String, rarity := 0, count := 1) -> Dictionary:
 	var d: Dictionary = DEFS[id]
 	var fixed := {"shield_potion": 2, "medkit": 1, "small_shield": 1, "healing_drink": 2, "launch_pad": 3, "bandages": 0, "hydro_juice": 2, "mega_flask": 4}
-	var it := {"id": id, "rarity": rarity if d.kind == "weapon" else int(fixed.get(id, 0)), "count": count}
+	var r: int = 5 if d.get("mythic", false) else (rarity if d.kind == "weapon" else int(fixed.get(id, 0)))
+	var it := {"id": id, "rarity": r, "count": count}
 	if d.kind == "weapon":
 		it["loaded"] = d.mag
 	return it
@@ -53,11 +61,24 @@ static func def(it: Dictionary) -> Dictionary:
 
 ## Each rarity step adds 6 % damage and makes reloads 5 % faster.
 static func damage(it: Dictionary) -> float:
+	if DEFS[it.id].get("mythic", false):
+		return DEFS[it.id].damage                                                   # mythics are tuned as they are: no rarity bonus
 	return DEFS[it.id].damage * (1.0 + 0.06 * it.rarity)
 
 
 static func reload_time(it: Dictionary) -> float:
+	if DEFS[it.id].get("mythic", false):
+		return DEFS[it.id].reload
 	return DEFS[it.id].reload * (1.0 - 0.05 * it.rarity)
+
+
+static func is_mythic(it) -> bool:
+	return it != null and it is Dictionary and it.has("id") and DEFS[it.id].get("mythic", false)
+
+
+static func infinite_ammo(it) -> bool:
+	## Mythics that use a cooldown instead of ammo (web shooters, Ravage's Grasp).
+	return it != null and it.has("id") and DEFS[it.id].get("ammo", "") == "none"
 
 
 static func label(it: Dictionary) -> String:

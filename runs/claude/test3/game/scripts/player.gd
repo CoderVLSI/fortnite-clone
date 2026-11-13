@@ -416,7 +416,7 @@ func _interaction() -> void:
 		if it == null or Items.def(it).kind != "weapon":
 			prompt = "Hold a weapon to upgrade it here"
 		elif it.rarity >= 4:
-			prompt = "%s is already Legendary" % Items.def(it).name
+			prompt = "%s is already %s" % [Items.def(it).name, Items.RARITY_NAMES[it.rarity]]
 		else:
 			var cost: int = game.events.upgrade_cost(it.rarity)
 			prompt = _key_hint() + " Upgrade to %s  ·  %d gold%s" % [Items.RARITY_NAMES[it.rarity + 1], cost, "" if a.gold >= cost else "  (you have %d)" % a.gold]

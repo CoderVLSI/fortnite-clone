@@ -1,0 +1,36 @@
+{
+ "asset": "web_shooters",
+ "triangles": 1404,
+ "budget": 6000,
+ "per_object": {
+  "mythic_web_bodyL": 560,
+  "mythic_web_bodyR": 560,
+  "mythic_web_emblem": 184,
+  "mythic_web_cartridge": 56,
+  "mythic_web_strap": 44
+ },
+ "dimensions_m": [
+  0.184,
+  0.3614,
+  0.163
+ ],
+ "min": [
+  -0.092,
+  -0.203,
+  -0.006
+ ],
+ "max": [
+  0.092,
+  0.1584,
+  0.157
+ ],
+ "objects": 5,
+ "materials": [
+  "mat_web_blue",
+  "mat_web_dark",
+  "mat_web_glow",
+  "mat_web_red",
+  "mat_web_white"
+ ],
+ "problems": []
+}

@@ -306,10 +306,12 @@ func _draw_slot(i: int, a: Actor) -> void:
 	var ir := Rect2(r.position + Vector2((r.size.x - 84) / 2, 16), Vector2(84, 84))
 	if not _icon(it.id, ir):
 		txt(r.position + Vector2(0, 62), d.name, 14, Color(1, 1, 1, fa), HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
-	txt(r.position + Vector2(0, 122), d.name, 16, Color(1, 1, 1, fa), HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
+	txt(r.position + Vector2(0, 122), d.name, 16 if d.name.length() < 16 else 11, Color(1, 1, 1, fa), HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
 	txt(r.position + Vector2(0, 140), Items.RARITY_NAMES[it.rarity], 12, Color(rc2.r, rc2.g, rc2.b, fa), HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
 	var line := ""
-	if d.kind == "weapon":
+	if d.kind == "weapon" and Items.infinite_ammo(it):
+		line = "\u221e   ·   %.1f s cooldown" % d.cooldown        # web shooters and the grasp: a cooldown instead of ammo
+	elif d.kind == "weapon":
 		line = "%d / %d   ·   dmg %d" % [it.loaded, d.mag, int(round(Items.damage(it)))]
 	elif d.kind == "throwable":
 		line = "x%d   ·   dmg %d" % [it.count, int(d.damage)]
@@ -374,12 +376,20 @@ func tip_lines(it: Dictionary) -> Array:
 	var L: Array = []
 	var dim := Color(0.85, 0.88, 0.92)
 	match d.kind:
+		"weapon" when Items.infinite_ammo(it):
+			L.append([{"web_shooters": "Shoots a web to anything within 70 m and swings you on it",
+					"ravage_grasp": "Lash a tendril 30 m: yank and slam an enemy (60 damage, stun), or pull yourself to a surface"}.get(it.id, ""), Color(1.0, 0.8, 0.6)])
+			L.append(["No ammo   Cooldown %.1f s" % d.cooldown, dim])
+			L.append(["Mythic: dropped by a boss, cannot be upgraded", Items.RARITY_COLORS[5]])
 		"weapon":
 			var pel := (" x %d pellets" % d.pellets) if d.pellets > 1 else ""
 			L.append(["Damage %d%s" % [int(round(Items.damage(it))), pel], dim])
 			L.append(["Fire rate %.1f / s%s" % [d.rate, "  (auto)" if d.get("auto", false) else ""], dim])
 			L.append(["Magazine %d / %d   %s ammo" % [it.loaded, d.mag, d.ammo], Items.AMMO_COLORS[d.ammo]])
 			L.append(["Reload %.1f s   Range %d m" % [Items.reload_time(it), int(d.range)], dim])
+			if d.get("mythic", false):
+				L.append([{"charge_shotgun": "Hold to charge: up to 2x damage and a tight spread",
+						"shockwave_launcher": "Orb bursts into a shockwave that launches players and wrecks builds"}.get(it.id, "Mythic"), Color(1.0, 0.8, 0.6)])
 		"throwable":
 			L.append(["Damage %d, radius %.1f m" % [int(d.damage), d.radius], dim])
 		"heal", "shield":

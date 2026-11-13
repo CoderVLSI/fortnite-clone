@@ -882,16 +882,19 @@ func spawn_grenade(owner_a: Actor, pos: Vector3, vel: Vector3, dmg: float, radiu
 
 
 func _update_projectiles(delta: float) -> void:
+	_update_mythic_fx(delta)
 	for pr in projectiles.duplicate():
 		var n: Node3D = pr.node
 		pr.life -= delta
 		var from := n.global_position
 		if pr.kind == "grenade":
 			pr.vel.y -= 20.0 * delta
+		elif pr.kind == "orb":
+			pr.vel.y -= 7.0 * delta                      # a slow arc
 		var to: Vector3 = from + pr.vel * delta
 		var res := ray(from, to, pr.owner)
 		if not res.is_empty():
-			if pr.kind == "rocket" or res.collider is Actor:
+			if pr.kind == "rocket" or pr.kind == "orb" or res.collider is Actor:
 				explode(res.position, pr)
 				continue
 			pr.vel = (pr.vel as Vector3).bounce(res.normal) * 0.42      # grenades bounce and roll
@@ -906,6 +909,9 @@ func _update_projectiles(delta: float) -> void:
 func explode(pos: Vector3, pr: Dictionary) -> void:
 	projectiles.erase(pr)
 	pr.node.queue_free()
+	if pr.kind == "orb":
+		shock_burst(pos, pr)
+		return
 	for a in actors:
 		if not a.alive() or a.state == Actor.State.BLIMP:
 			continue
@@ -997,3 +1003,171 @@ func fx_tracer(from: Vector3, to: Vector3, rarity: int) -> void:
 	var tw := create_tween()
 	tw.tween_property(mat, "albedo_color:a", 0.0, 0.09)
 	tw.tween_callback(mi.queue_free)
+
+
+# ----------------------------------------------------------------------------- mythic weapon effects
+## Shockwave orb (Tinker's Shockwave Launcher), the tendril of Ravage's Grasp. The web line lives in actor.gd.
+
+func spawn_shockwave(owner_a: Actor, pos: Vector3, dir: Vector3, d: Dictionary) -> void:
+	## A slow arcing orb; it bursts on contact (or after 5 s) into shock_burst().
+	var n := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 0.32
+	sm.height = 0.64
+	sm.radial_segments = 12
+	sm.rings = 6
+	n.mesh = sm
+	n.material_override = Models.glow_material(Color(0.62, 0.9, 1.0), 3.5, 0.95)
+	n.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var halo := MeshInstance3D.new()
+	var hm := SphereMesh.new()
+	hm.radius = 0.55
+	hm.height = 1.1
+	hm.radial_segments = 10
+	hm.rings = 5
+	halo.mesh = hm
+	halo.material_override = Models.glow_material(Color(0.4, 0.7, 1.0), 2.0, 0.28)
+	halo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	n.add_child(halo)
+	fx_root.add_child(n)
+	n.global_position = pos
+	projectiles.append({"node": n, "vel": dir * 30.0, "owner": owner_a, "damage": float(d.damage), "radius": float(d.radius), "life": 5.0,
+		"kind": "orb", "knock": float(d.get("knock", 34.0)), "struct": float(d.get("struct_damage", 400.0))})
+
+
+func shock_burst(pos: Vector3, pr: Dictionary) -> void:
+	## The shockwave: small damage and a big launch (the launch pad's launch(), plus sideways push) for every actor in
+	## the radius, yourself included, and heavy damage to built structures. No fall damage from the knock.
+	var radius: float = pr.radius
+	for a in actors:
+		if not a.alive() or a.state == Actor.State.BLIMP:
+			continue
+		var c := a.global_position + Vector3(0, 0.9, 0)
+		var d := c.distance_to(pos)
+		if d >= radius or not can_see(pos + Vector3(0, 0.4, 0), a.eye()):
+			continue
+		var fall := clampf(1.15 - d / radius, 0.45, 1.0)
+		if a != pr.owner:
+			var dmg: float = pr.damage * fall
+			a.hit(dmg, pr.owner, false, pos)
+			on_damage_dealt(pr.owner, a, dmg, a.eye())
+		var away := Vector3(a.global_position.x - pos.x, 0, a.global_position.z - pos.z)
+		if away.length() < 0.3:
+			away = Vector3(rng.randf_range(-1, 1), 0, rng.randf_range(-1, 1))
+		away = away.normalized()
+		a.receive_knock(float(pr.knock) * fall, away * 20.0 * fall)
+	sfx("shockwave", pos)
+	structures.explode(pos, radius, float(pr.struct), pr.owner)
+	fx_shockwave(pos, radius)
+
+
+func fx_shockwave(pos: Vector3, radius: float) -> void:
+	if autotest:
+		return
+	_fx_disc(pos + Vector3(0, 0.1, 0), 0.8, radius * 1.1, 0.5, Color(0.6, 0.88, 1.0, 0.7))
+	_fx_disc(pos + Vector3(0, 0.6, 0), 0.5, radius * 0.8, 0.38, Color(1.0, 1.0, 1.0, 0.6))
+	var mi := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 1.0
+	sm.height = 2.0
+	sm.radial_segments = 14
+	sm.rings = 7
+	mi.mesh = sm
+	var mat := Models.glow_material(Color(0.6, 0.9, 1.0), 3.0, 0.55)
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	fx_root.add_child(mi)
+	mi.global_position = pos
+	mi.scale = Vector3.ONE * 0.5
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(mi, "scale", Vector3.ONE * radius, 0.35)
+	tw.tween_property(mat, "albedo_color:a", 0.0, 0.4)
+	tw.chain().tween_callback(mi.queue_free)
+
+
+var tendrils: Array = []
+
+
+func fx_tendril(owner_a: Actor, to, life: float, whiff := false) -> Dictionary:
+	## A thick, dark red, slightly wavy tendril from the owner's hand to a point or an Actor (followed). It shoots out in
+	## 0.12 s and stays for `life` seconds; set the returned dict's `life` to end it earlier.
+	var mi := MeshInstance3D.new()
+	mi.mesh = ImmediateMesh.new()
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.36, 0.03, 0.07)
+	m.emission_enabled = true
+	m.emission = Color(0.5, 0.04, 0.05)
+	m.emission_energy_multiplier = 0.6
+	m.roughness = 0.5
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.top_level = true
+	fx_root.add_child(mi)
+	var fx := {"mi": mi, "owner": owner_a, "to": to, "t": 0.0, "life": life, "whiff": whiff}
+	tendrils.append(fx)
+	_draw_tendril(fx)
+	return fx
+
+
+func _update_mythic_fx(delta: float) -> void:
+	for fx in tendrils.duplicate():
+		fx.t += delta
+		var o: Actor = fx.owner
+		if fx.t >= fx.life or o == null or not is_instance_valid(o) or not o.alive():
+			tendrils.erase(fx)
+			fx.mi.queue_free()
+			continue
+		_draw_tendril(fx)
+
+
+func _draw_tendril(fx: Dictionary) -> void:
+	var o: Actor = fx.owner
+	var a: Vector3 = o._hand_pos()
+	var target = fx.to
+	var b: Vector3 = (target as Actor).centre() if target is Actor else target
+	var t: float = fx.t
+	var reach := clampf(t / 0.12, 0.0, 1.0)
+	var fade := clampf((float(fx.life) - t) / 0.18, 0.0, 1.0)
+	if fx.whiff:
+		reach = clampf(t / 0.2, 0.0, 1.0) if t < 0.2 else clampf(1.0 - (t - 0.2) / 0.25, 0.0, 1.0)
+	var tip := a.lerp(b, reach)
+	var axis := tip - a
+	var len := axis.length()
+	var im := fx.mi.mesh as ImmediateMesh
+	im.clear_surfaces()
+	if len < 0.2:
+		return
+	var dir := axis / len
+	var up := Vector3.UP if absf(dir.y) < 0.95 else Vector3.RIGHT
+	var side := dir.cross(up).normalized()
+	var vert := side.cross(dir).normalized()
+	var segs := clampi(int(len / 1.2) + 6, 8, 28)
+	var sides := 6
+	var rings := []
+	for i in segs + 1:
+		var k := float(i) / segs
+		var wob := sin(k * 11.0 - t * 22.0) * 0.16 * sin(k * PI) * (1.0 - reach * 0.35) * fade
+		var wob2 := cos(k * 9.0 - t * 17.0) * 0.12 * sin(k * PI) * fade
+		var c := a + axis * k + side * wob + vert * wob2
+		var r := lerpf(0.11, 0.045, k) * (0.4 + 0.6 * fade)
+		var ring := []
+		for j in sides:
+			var ang := TAU * j / sides
+			ring.append(c + (side * cos(ang) + vert * sin(ang)) * r)
+		rings.append(ring)
+	im.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in segs:
+		for j in sides:
+			var j2 := (j + 1) % sides
+			var p0: Vector3 = rings[i][j]
+			var p1: Vector3 = rings[i][j2]
+			var p2: Vector3 = rings[i + 1][j2]
+			var p3: Vector3 = rings[i + 1][j]
+			var n := (p1 - p0).cross(p3 - p0).normalized()
+			for q in [p0, p1, p2, p0, p2, p3]:
+				im.surface_set_normal(n)
+				im.surface_add_vertex(q)
+	im.surface_end()
+	fx.mi.global_transform = Transform3D.IDENTITY

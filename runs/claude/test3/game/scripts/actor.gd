@@ -31,7 +31,7 @@ var shield := 0.0
 var kills := 0
 var slots: Array = [null, null, null, null, null]
 var active := -1                         # 0..4 = hotbar slot, -1 = pickaxe
-var ammo := {"light": 0, "medium": 0, "heavy": 0, "shells": 0, "rockets": 0}
+var ammo := {"light": 0, "medium": 0, "heavy": 0, "shells": 0, "rockets": 0, "none": 999}   # "none": the pool cooldown mythics point at
 var body: Character
 var spread_mul := 1.0                    # bots: aim error on top of the weapon spread
 var placement := 0
@@ -143,10 +143,15 @@ func _physics_process(delta: float) -> void:
 func _tick(delta: float) -> void:
 	fire_cd = maxf(fire_cd - delta, 0.0)
 	bloom = move_toward(bloom, 0.0, delta * 2.2)
+	_mythic_tick(delta)
 	if emote != "":
 		_emote_tick(delta)
 	if mantle_t >= 0.0:
 		_mantle_step(delta)
+	elif web_state != 0:
+		_web_step(delta)
+	elif grasp_pull:
+		_grasp_pull_step(delta)
 	elif zip != null:
 		_zip_step(delta)
 	else:
@@ -227,6 +232,8 @@ func launch(up: float) -> void:
 	crouched = false
 	_set_height(STAND_H)
 	cancel_use()
+	_web_cancel()
+	grasp_pull = false
 	state = State.SKYDIVE
 	launched = true
 	velocity = Vector3(velocity.x * 0.5, up, velocity.z * 0.5)
@@ -706,6 +713,8 @@ func _spare_ammo(it: Dictionary) -> void:
 		return
 	it["used"] = true                                  # dropped and picked up again, it brings nothing more
 	var d: Dictionary = Items.def(it)
+	if d.ammo == "none":
+		return
 	ammo[d.ammo] += maxi(int(d.mag) * 2, int(Items.AMMO_PICKUP[d.ammo]))
 
 
@@ -753,6 +762,10 @@ func best_weapon_slot(dist: float) -> int:
 			"assault_rifle": score *= 2.2 if dist < 90.0 else 1.0
 			"sniper_rifle": score *= 3.0 if dist > 55.0 else (0.5 if dist > 20.0 else 0.2)
 			"rocket_launcher": score *= 2.4 if (dist > 14.0 and dist < 90.0) else 0.05
+			"web_shooters": score *= 0.02
+			"ravage_grasp": score *= 1.5 if dist < 26.0 else 0.05
+			"charge_shotgun": score *= 3.0 if dist < 14.0 else (1.2 if dist < 28.0 else 0.1)
+			"shockwave_launcher": score *= 1.4 if (dist > 6.0 and dist < 60.0) else 0.05
 		if score > best_score:
 			best_score = score
 			best = i
@@ -789,6 +802,8 @@ func _combat(delta: float) -> void:
 		return
 	if build_piece != "":
 		return                                         # placing pieces is driven by the controller
+	if it != null and Items.is_mythic(it) and _mythic_combat(it, delta):
+		return
 	if fire_cd > 0.0 or not (in_fire or burst_left > 0):      # a burst under way finishes without the trigger
 		return
 	if it == null:
@@ -797,6 +812,8 @@ func _combat(delta: float) -> void:
 	var d2: Dictionary = Items.def(it)
 	match d2.kind:
 		"weapon":
+			if _mythic_shot(d2):
+				return
 			if it.loaded <= 0:
 				start_reload()
 				if reloading <= 0.0 and is_player:
@@ -939,6 +956,9 @@ func _shoot(it: Dictionary, d: Dictionary) -> void:
 	if d.get("rocket", false):
 		game.spawn_rocket(self, from + base * 1.2, base, Items.damage(it), d.radius)
 		return
+	if d.get("orb", false):
+		game.spawn_shockwave(self, from + base * 1.2, base, d)
+		return
 	for p in d.pellets:
 		var dir := _jitter(base, spread)
 		var to := from + dir * 400.0
@@ -1009,6 +1029,7 @@ func die(killer: Actor) -> void:
 		return
 	hp = 0.0
 	shield = 0.0
+	_mythic_clear()
 	state = State.DEAD
 	collision_layer = 0
 	collision_mask = 0
@@ -1036,3 +1057,489 @@ func die(killer: Actor) -> void:
 			ammo[t] = 0
 			n += 1
 	game.on_eliminated(self, killer)
+
+
+# ----------------------------------------------------------------------------- mythic weapons
+## Four boss weapons (Items.MYTHIC_IDS, rarity 5). All of them work from the normal inputs, so a bot or boss brain only
+## needs aim_yaw / aim_pitch plus in_fire while the item is held (see the direct calls below for use without the item):
+##   web_shooters       in_fire rising edge shoots a web (70 m, terrain / trees / buildings) and starts a swing; keep in_fire
+##                      held to swing, in_fire = false (or in_jump) lets go and keeps the momentum. 0.4 s cooldown.
+##                      Direct: web_swing_to(point) -> bool, web_release(), is_swinging().
+##   ravage_grasp       in_fire (one pulse) lashes a tendril, 30 m: an enemy is yanked to you and slammed (60 damage,
+##                      shield first, stun 0.6 s), a surface pulls YOU there. 3 s cooldown (1 s after a miss).
+##                      Direct: grasp_at(target: Actor or Vector3) -> bool.
+##   charge_shotgun     hold in_fire to charge (0..1 in 1 s, `charge`), in_fire = false fires with that charge. Uses shells.
+##                      Direct: charge_fire(c: float) fires at once with charge c.
+##   shockwave_launcher in_fire pulse lobs a slow orb that bursts into a launching shockwave (rockets, mag 4).
+##                      Direct: shockwave_fire(dir: Vector3) -> bool, no item or ammo needed.
+## `fire_cd` is the cooldown for all of them (the HUD reads it). Stunned actors (stun_t > 0) cannot move, fire or jump.
+
+const WEB_RANGE := 70.0
+const WEB_CD := 0.4
+const WEB_GRAVITY := 20.0
+const GRASP_RANGE := 30.0
+const KNOCK_TIME := 1.5
+const YANK_TIME := 0.22
+
+var stun_t := 0.0
+var charge := 0.0                        # charge shotgun: 0..1 while the trigger is held
+var web_state := 0                       # 0 = none, 1 = swinging on the web, 2 = airborne after letting go
+var web_anchor := Vector3.ZERO
+var web_len := 10.0
+var web_len_goal := 10.0
+var web_t := 0.0
+var web_free_t := 0.0
+var web_hold := false                    # the swing was started by the held trigger, so letting go of it ends the swing
+var web_max := 6.0
+var _web_prev_fire := false
+var _web_node: MeshInstance3D
+var grasp_pull := false                  # being pulled to a surface by the tendril
+var grasp_to := Vector3.ZERO
+var grasp_t := 0.0
+var grasp_fx = null
+var yank_victim: Actor
+var yank_t := 0.0
+var yank_from := Vector3.ZERO
+var yank_to := Vector3.ZERO
+var knock_vel := Vector3.ZERO
+var knock_t := 0.0
+
+
+func _mythic_tick(delta: float) -> void:
+	if stun_t > 0.0:
+		stun_t -= delta
+		in_move = Vector2.ZERO
+		in_fire = false
+		in_jump = false
+		in_crouch = false
+		reloading = 0.0
+		burst_left = 0
+	var it = item()
+	if charge > 0.0 and not (it != null and it.id == "charge_shotgun" and state == State.GROUND):
+		charge = 0.0
+	var rising := in_fire and not _web_prev_fire
+	_web_prev_fire = in_fire
+	if rising and it != null and it.id == "web_shooters" and fire_cd <= 0.0 and build_piece == "" and emote == "" and using <= 0.0 and mantle_t < 0.0:
+		_web_fire()
+	if yank_victim != null:
+		_grasp_yank_step(delta)
+	if knock_t > 0.0:
+		knock_t -= delta
+		if state == State.SKYDIVE or state == State.GLIDE:
+			var k := clampf(knock_t / KNOCK_TIME, 0.0, 1.0)
+			velocity.x = knock_vel.x * k
+			velocity.z = knock_vel.z * k
+		if is_on_floor() and knock_t < KNOCK_TIME - 0.3:
+			knock_t = 0.0
+
+
+func _mythic_combat(it: Dictionary, delta: float) -> bool:
+	## Called from _combat before the trigger check. True when this frame was handled here.
+	var d: Dictionary = Items.def(it)
+	if d.get("web", false):
+		return true                                # the swing itself is handled in _tick (it works in the air too)
+	if d.has("charge"):
+		_charge_combat(it, d, delta)
+		return true
+	return false
+
+
+func _mythic_shot(d: Dictionary) -> bool:
+	## The fire branch of _combat for a mythic that fires on a pulse (grasp). True if handled.
+	if d.get("grasp", false):
+		_grasp_fire()
+		if is_player:
+			in_fire = false
+		return true
+	return false
+
+
+func mythic_cooldown_frac() -> float:
+	## 0 = ready, 1 = just fired (the HUD shows this for cooldown mythics).
+	var it = item()
+	if it == null or not Items.is_mythic(it):
+		return 0.0
+	var d: Dictionary = Items.def(it)
+	return clampf(fire_cd / float(d.get("cooldown", 1.0 / float(d.rate))), 0.0, 1.0)
+
+
+func _aim_from(from: Vector3) -> Vector3:
+	var dir := aim_dir()
+	if is_player:
+		dir = (game.player_aim_point() - from).normalized()
+	return dir
+
+
+func _hand_pos() -> Vector3:
+	if body != null and body.holder != null and body.held != null:
+		return body.holder.global_position
+	return global_position + Vector3(0, 1.2, 0)
+
+
+# ---- web shooters
+
+func is_swinging() -> bool:
+	return web_state == 1
+
+
+func _web_fire() -> void:
+	var from := eye()
+	var dir := _aim_from(from)
+	var res: Dictionary = game.ray(from, from + dir * WEB_RANGE, self, 1)
+	if res.is_empty():
+		fire_cd = 0.25
+		game.sfx("empty", global_position)
+		return
+	web_swing_to(res.position, true)
+
+
+func web_swing_to(point: Vector3, held_fire := false) -> bool:
+	## Start swinging from `point` (anywhere, any range). Without held_fire the swing ends by web_release(), a jump,
+	## or after 4 seconds.
+	if state == State.DEAD or state == State.BLIMP or state == State.SWIM or stun_t > 0.0:
+		return false
+	zip = null
+	mantle_t = -1.0
+	sliding = false
+	crouched = false
+	_set_height(STAND_H)
+	cancel_use()
+	reloading = 0.0
+	stop_emote()
+	grasp_pull = false
+	launched = false
+	knock_t = 0.0
+	state = State.GROUND
+	var hand := global_position + Vector3(0, 1.2, 0)
+	web_anchor = point
+	web_len = maxf(hand.distance_to(point), 5.0)
+	web_len_goal = clampf(web_len * 0.72, 6.0, 55.0)
+	web_t = 0.0
+	web_hold = held_fire
+	web_max = 6.0 if held_fire else 4.0
+	web_state = 1
+	if is_on_floor():
+		velocity.y = maxf(velocity.y, 6.0)
+		global_position += Vector3(0, 0.12, 0)
+	game.sfx("web_shooters", global_position)
+	_web_line_update()
+	return true
+
+
+func web_release() -> void:
+	if web_state != 1:
+		return
+	web_state = 2
+	web_free_t = 0.0
+	in_jump = false
+	fire_cd = maxf(fire_cd, WEB_CD)
+	_web_line_hide()
+
+
+func _web_cancel() -> void:
+	web_state = 0
+	_web_line_hide()
+
+
+func _web_step(delta: float) -> void:
+	if web_state == 1:
+		web_t += delta
+		if in_jump or (web_hold and not in_fire) or web_t > web_max:
+			web_release()
+	if web_state == 1:
+		var pos0 := global_position
+		var hand := pos0 + Vector3(0, 1.2, 0)
+		var out := hand - web_anchor
+		var dist := maxf(out.length(), 0.01)
+		web_len = move_toward(web_len, web_len_goal, 24.0 * delta)
+		velocity.y -= WEB_GRAVITY * delta
+		var w := _wish()
+		if w.length() > 0.1 and Vector2(velocity.x, velocity.z).dot(Vector2(w.x, w.z)) < 26.0:
+			velocity.x += w.x * 14.0 * delta
+			velocity.z += w.z * 14.0 * delta
+		if dist >= web_len - 0.05:
+			var n := out / dist
+			var vr := velocity.dot(n)
+			if vr > 0.0:
+				velocity -= n * vr                       # the web is taut: no moving away from the anchor
+		move_and_slide()
+		hand = global_position + Vector3(0, 1.2, 0)
+		var o2 := hand - web_anchor
+		if o2.length() > web_len:
+			var fix := web_anchor + o2.normalized() * web_len - hand
+			move_and_collide(fix)
+			velocity += fix / maxf(delta, 0.001)
+		if velocity.length() > 48.0:
+			velocity = velocity.normalized() * 48.0
+		fall_start = global_position.y
+		jump_air_t = 99.0
+		if is_on_floor() and web_t > 0.6 and Vector2(velocity.x, velocity.z).length() < 3.0:
+			web_release()
+		if depth() > SWIM_IN:
+			_web_cancel()
+			_enter_water()
+			return
+		_web_line_update()
+		return
+	# airborne after letting go: keep the momentum, steer a little, no fall damage for a while
+	web_free_t += delta
+	velocity.y -= GRAVITY * delta
+	var w2 := _wish()
+	if w2.length() > 0.1 and Vector2(velocity.x, velocity.z).dot(Vector2(w2.x, w2.z)) < 14.0:
+		velocity.x += w2.x * 7.0 * delta
+		velocity.z += w2.z * 7.0 * delta
+	in_jump = false
+	move_and_slide()
+	if web_free_t < 2.5:
+		fall_start = global_position.y
+	if is_on_floor():
+		web_state = 0
+		fall_start = global_position.y
+		jump_air_t = 99.0
+		game.sfx("land", global_position)
+	elif depth() > SWIM_IN:
+		web_state = 0
+		_enter_water()
+
+
+func _web_line_update() -> void:
+	if _web_node == null:
+		_web_node = MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.022, 0.022, 1.0)
+		_web_node.mesh = bm
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color(1, 1, 1)
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_web_node.material_override = m
+		_web_node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		game.fx_root.add_child(_web_node)
+	var a := _hand_pos()
+	var len := a.distance_to(web_anchor)
+	if len < 0.05:
+		return
+	_web_node.visible = true
+	_web_node.global_position = (a + web_anchor) / 2.0
+	var up := Vector3.UP if absf((web_anchor - a).normalized().y) < 0.98 else Vector3.RIGHT
+	_web_node.look_at(web_anchor, up)
+	_web_node.scale = Vector3(1, 1, len)
+
+
+func _web_line_hide() -> void:
+	if _web_node != null:
+		_web_node.visible = false
+
+
+# ---- Ravage's Grasp
+
+func _grasp_fire() -> void:
+	var from := eye()
+	var dir := _aim_from(from)
+	var res: Dictionary = game.ray(from, from + dir * GRASP_RANGE, self)
+	game.sfx("ravage_grasp", global_position)
+	body.swing = 1.0
+	if res.is_empty():
+		fire_cd = 1.0
+		game.fx_tendril(self, from + dir * GRASP_RANGE, 0.45, true)
+		return
+	if res.collider is Actor:
+		grasp_at(res.collider)
+	else:
+		grasp_at(res.position)
+
+
+func grasp_at(target) -> bool:
+	## Lash at an Actor (yank and slam it) or a Vector3 surface point (pull yourself to it).
+	var d: Dictionary = Items.DEFS["ravage_grasp"]
+	if state == State.DEAD or state == State.BLIMP or stun_t > 0.0:
+		return false
+	if target is Actor:
+		var v: Actor = target
+		if v == self or not v.alive() or v.state == State.BLIMP:
+			return false
+		fire_cd = float(d.cooldown)
+		yank_victim = v
+		yank_t = 0.0
+		yank_from = v.global_position
+		var flat := Vector3(global_position.x - v.global_position.x, 0, global_position.z - v.global_position.z)
+		flat = flat.normalized() if flat.length() > 0.1 else Vector3.BACK
+		var spot := global_position - flat * 1.7
+		var dn: Dictionary = game.ray(spot + Vector3(0, 2.0, 0), spot - Vector3(0, 4.0, 0), self, 1)
+		yank_to = Vector3(spot.x, dn.position.y if not dn.is_empty() else global_position.y, spot.z)
+		v.stun_t = maxf(v.stun_t, YANK_TIME + 0.1)
+		v.zip = null
+		v.mantle_t = -1.0
+		v._web_cancel()
+		v.grasp_pull = false
+		game.fx_tendril(self, v, YANK_TIME + 0.25, false)
+		return true
+	if state == State.SWIM:
+		return false
+	fire_cd = float(d.cooldown)
+	var pt: Vector3 = target
+	var from := eye()
+	var nrm := Vector3.UP
+	var hitp: Dictionary = game.ray(from, from + (pt - from).normalized() * (from.distance_to(pt) + 0.6), self, 1)
+	if not hitp.is_empty():
+		pt = hitp.position
+		nrm = hitp.normal
+	if state == State.SKYDIVE or state == State.GLIDE:
+		state = State.GROUND
+	zip = null
+	mantle_t = -1.0
+	sliding = false
+	crouched = false
+	_set_height(STAND_H)
+	cancel_use()
+	stop_emote()
+	_web_cancel()
+	launched = false
+	knock_t = 0.0
+	grasp_to = pt + nrm * 0.9
+	grasp_t = 0.0
+	grasp_pull = true
+	if is_on_floor():
+		velocity.y = maxf(velocity.y, 4.0)
+		global_position += Vector3(0, 0.1, 0)
+	grasp_fx = game.fx_tendril(self, pt, 1.8, false)
+	return true
+
+
+func _grasp_yank_step(delta: float) -> void:
+	var v := yank_victim
+	if v == null or not v.alive():
+		yank_victim = null
+		return
+	yank_t += delta
+	var k := clampf(yank_t / YANK_TIME, 0.0, 1.0)
+	v.global_position = yank_from.lerp(yank_to, k * k * (3.0 - 2.0 * k))
+	v.velocity = Vector3.ZERO
+	v.fall_start = v.global_position.y
+	if k < 1.0:
+		return
+	yank_victim = null
+	var d: Dictionary = Items.DEFS["ravage_grasp"]
+	var dmg := float(d.damage)
+	v.hit(dmg, self, false, global_position)
+	v.stun_t = maxf(v.stun_t, float(d.stun))
+	game.on_damage_dealt(self, v, dmg, v.centre())
+	game.sfx("land", v.global_position)
+	game.fx_blast(v.centre(), 2.2)
+
+
+func _grasp_pull_step(delta: float) -> void:
+	grasp_t += delta
+	var to := grasp_to - (global_position + Vector3(0, 0.9, 0))
+	var dist := to.length()
+	var stuck := grasp_t > 0.2 and get_real_velocity().length() < 2.0
+	if dist < 1.3 or grasp_t > 1.7 or stuck:
+		grasp_pull = false
+		if grasp_fx != null:
+			grasp_fx.life = float(grasp_fx.t) + 0.15
+			grasp_fx = null
+		var dir := to / maxf(dist, 0.01)
+		velocity = dir * minf(9.0, dist * 4.0) + Vector3(0, 3.0, 0)
+		fall_start = global_position.y
+		jump_air_t = 99.0
+		if is_on_wall():
+			_try_mantle(MANTLE_MAX + 1.0)
+		return
+	velocity = to / dist * clampf(dist * 6.0, 9.0, 34.0)
+	move_and_slide()
+	fall_start = global_position.y
+	jump_air_t = 99.0
+	if depth() > SWIM_IN:
+		grasp_pull = false
+		_enter_water()
+
+
+# ---- charge shotgun
+
+func _charge_combat(it: Dictionary, d: Dictionary, delta: float) -> void:
+	if fire_cd > 0.0:
+		return
+	if in_fire and it.loaded > 0:
+		if charge <= 0.0:
+			game.sfx("charge_up_ui" if is_player else "charge_up", global_position)
+		var was := charge
+		charge = minf(charge + delta / float(d.charge), 1.0)
+		if charge >= 1.0 and was < 1.0:
+			game.sfx("charge_full", global_position)
+		return
+	if charge > 0.0:
+		charge_fire(charge)
+		return
+	if in_fire and it.loaded <= 0:
+		start_reload()
+		if reloading <= 0.0 and is_player:
+			game.sfx("empty", global_position)
+			fire_cd = 0.3
+
+
+func charge_fire(c := 1.0) -> bool:
+	var it = item()
+	if it == null or it.id != "charge_shotgun" or it.loaded <= 0:
+		charge = 0.0
+		return false
+	var d: Dictionary = Items.def(it)
+	c = clampf(c, 0.0, 1.0)
+	charge = 0.0
+	it.loaded -= 1
+	fire_cd = 1.0 / float(d.rate)
+	if is_player:
+		in_fire = false
+	var from := eye()
+	var dd: Dictionary = d.duplicate()
+	dd["spread"] = lerpf(float(d.spread), float(d.charge_spread), c)
+	var spread := deg_to_rad(spread_deg(dd))
+	last_shot_t = game.match_time
+	bloom = minf(bloom + 0.3, 1.5)
+	var base := _aim_from(from)
+	game.sfx("charge_shotgun", global_position)
+	var per := Items.damage(it) * lerpf(float(d.charge_min_mul), float(d.charge_max_mul), c)
+	for p in int(d.pellets):
+		var dir := _jitter(base, spread)
+		var to := from + dir * 400.0
+		var res = game.ray(from, to, self)
+		var endp: Vector3 = res.position if res.has("position") else to
+		if res.has("collider") and res.collider is Actor:
+			var victim: Actor = res.collider
+			var dist := from.distance_to(endp)
+			var dmg := per * (1.0 if dist <= d.range else clampf(1.0 - (dist - d.range) / d.range, 0.35, 1.0))
+			victim.hit(dmg, self, false, global_position)
+			game.on_damage_dealt(self, victim, dmg, endp)
+		elif res.has("collider"):
+			game.structures.damage_at(res.collider, res.get("shape", 0), per, self, endp)
+		game.fx_tracer(from + dir * 1.0 + Vector3(0, -0.2, 0), endp, 5 if c > 0.95 else 3)
+	return true
+
+
+# ---- shockwave launcher
+
+func shockwave_fire(dir: Vector3) -> bool:
+	## Lob a shockwave orb from the eye along dir, with or without the item.
+	var d: Dictionary = Items.DEFS["shockwave_launcher"]
+	if state == State.DEAD or state == State.BLIMP or stun_t > 0.0:
+		return false
+	game.sfx("shockwave_launcher", global_position)
+	game.spawn_shockwave(self, eye() + dir * 1.2, dir.normalized(), d)
+	return true
+
+
+func receive_knock(up: float, push: Vector3) -> void:
+	## Thrown up and away by a shockwave: the launch pad's launch(), plus sideways momentum, and no fall damage.
+	launch(up)
+	knock_vel = push
+	knock_t = KNOCK_TIME
+	velocity.x = push.x
+	velocity.z = push.z
+
+
+func _mythic_clear() -> void:
+	web_state = 0
+	grasp_pull = false
+	yank_victim = null
+	charge = 0.0
+	if _web_node != null:
+		_web_node.queue_free()
+		_web_node = null

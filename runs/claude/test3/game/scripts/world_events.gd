@@ -212,8 +212,8 @@ func upgrade_cost(rarity: int) -> int:
 func upgrade(a: Actor) -> bool:
 	## The held weapon goes up one rarity for gold.
 	var it = a.item()
-	if it == null or Items.def(it).kind != "weapon" or it.rarity >= 4:
-		return false
+	if it == null or Items.def(it).kind != "weapon" or it.rarity >= 4 or Items.is_mythic(it):
+		return false                                    # Legendary tops out the benches; mythics are not upgradable at all
 	var cost := upgrade_cost(it.rarity)
 	if a.gold < cost:
 		return false
