@@ -20,10 +20,14 @@ runs/claude/test3/
 | **Warm-up** | A 20 s warm-up on the island before the bus: no damage, looting or building. It can be skipped in Settings. |
 | **Drop** | A blimp crosses the island for 50 s. Skydive, then **E** deploys the glider (an on-screen prompt shows the key). |
 | **Island** | 800 m, chunked terrain, rivers, towns, mesas, snow in the north and desert in the south. Minimap (900 m) and a full map on **M**. |
+| **Bosses and vaults** | Three bosses guard their own named locations: **Weaver** (web-slinger) at Frostpeak, **Ravage** (tendril creature) at Sandbar Depot, **Tinker** (mech pilot) at Gearworks Yard. Each has a boss health bar and drops its mythic weapons, gold and a **keycard** that opens the vault beside the lair, which holds three golden chests of top loot. |
+| **Mythic weapons** | Weaver's Web Shooters (swing on web lines), Ravage's Grasp (yank and slam an enemy, or pull yourself to a wall), Tinker's Charge Shotgun (hold to charge, up to 2x damage) and Tinker's Shockwave Launcher (launches players, wrecks builds). They only come from bosses. |
+| **Named places** | Ten locations named on both maps, with an "ENTERING" banner as you walk in, and skulls on the map where bosses are alive. |
 | **Weapons** | Nine guns with five rarities: pistol, pump and tactical shotguns, SMG, assault, burst and hunting rifles, bolt sniper, rocket launcher. Also grenades and launch pads. Reloads are animated (the magazine comes out). First shots are accurate after a short rest. |
 | **Heals** | Bandages, med kit, healing drink, small and big shields, hydro juice (health and shield), mega flask. |
 | **Building** | Wall, floor, stairs and cone in wood, brick or metal, with edits and weak points. The material switches automatically to one you have. Every structure, houses included, can be farmed and collapses, and the loot inside drops to the ground. |
-| **Movement** | Sprint, crouch, slide, mantle, swim, step-up onto ledges, zip lines (8), rifts (10) and launch pads. |
+| **Combat feedback** | Damage numbers on every hit. The crosshair turns red on an enemy's head, and headshots show yellow numbers and a HEADSHOT tag. |
+| **Movement** | Tactical sprint (hold Shift: faster, gun lowered), hurdle low fences and crates at a run, crouch, slide, mantle, swim, step-up onto ledges, zip lines (8), rifts (10) and launch pads. |
 | **Gold** | A fourth collectible, dropped by floor loot, chests and supply drops. |
 | **Upgrade benches** | Raise a weapon's rarity for 100 / 150 / 200 / 250 gold. |
 | **NPCs** | Six characters at points of interest. Talk to one (**E**) and hire them for gold, and they fight beside you. |
@@ -40,6 +44,8 @@ runs/claude/test3/
 |---|---|
 | Move / jump | WASD / Space |
 | Walk (you run by default) | hold right mouse |
+| Tactical sprint | hold Shift |
+| Hurdle / mantle | Space while running at a low obstacle / a ledge |
 | Crouch / slide | Ctrl |
 | Fire / aim | left / right mouse |
 | Weapon slots | 1–5, mouse wheel |
@@ -86,8 +92,8 @@ godot --headless --path game -s scripts/flowtest.gd
 | Suite | Checks | Covers |
 |---|---|---|
 | buildtest | 45 | Placing, editing, collapse, harvesting, explosions |
-| movetest | 31 | Crouch, slide, mantle, swim, step-up |
-| eventtest | 83 | Consumables, pads, zips, rifts, supply drops, spare ammo, auto material, walking out of houses, house collapse and loot fall, gold, benches, reloads, hiring |
+| movetest | 45 | Crouch, slide, mantle, swim, step-up, tactical sprint, hurdle |
+| eventtest | 151 | Consumables, pads, zips, rifts, supply drops, spare ammo, auto material, walking out of houses, house collapse and loot fall, gold, benches, reloads, hiring, mythic weapons, bosses, keycards, vaults, named places |
 | invtest | 22 | Inventory screen |
 | flowtest | 22 | Menu → lobby → warm-up → match → summary → play again → pause → leave |
 

@@ -17,7 +17,7 @@ Open `index.html` in a browser. `README.txt` is the original note from the folde
 ## Godot replication (`runs/claude/`)
 
 This repo also contains a replication of the challenge, built in Godot 4.5 instead of Unity. The Stage 3 game (50 players,
-an island with snow and desert biomes, building, gold, upgrade benches and NPCs for hire) is in `runs/claude/test3/`.
+an island with snow and desert biomes, building, gold, upgrade benches, NPCs for hire, three bosses with keycard vaults and mythic weapons) is in `runs/claude/test3/`.
 Its README covers the features, controls and tests. Ready-to-play builds are `builds/IslandRoyale-windows.zip` and
 `builds/IslandRoyale-android.apk`.
 
