@@ -268,9 +268,24 @@ func animate(delta: float, a: Actor) -> void:
 		al = Vector3(deg_to_rad(165), 0, deg_to_rad(-12)); ar = Vector3(deg_to_rad(165), 0, deg_to_rad(12))
 		tl = deg_to_rad(12); tr = deg_to_rad(20); kl = deg_to_rad(25); kr = deg_to_rad(35)
 		want_legs = 1.0; want_arms = 1.0
+	elif a.hurdle_t >= 0.0:
+		# vault: lead leg thrown forward, trailing leg tucked back, one arm reaching ahead and one swung back
+		var vk := clampf(a.hurdle_t / maxf(a.hurdle_dur, 0.01), 0.0, 1.0)
+		var mid := sin(vk * PI)
+		tl = lerpf(0.5, 1.45, mid); kl = lerpf(0.4, 0.1, mid)
+		tr = lerpf(0.2, -0.35, mid); kr = lerpf(0.9, 2.0, mid)
+		al = Vector3(lerpf(0.4, 2.3, mid), 0, -0.2); ar = Vector3(lerpf(-0.2, -0.9, mid), 0, 0.2)
+		lean = lerpf(-0.1, -0.5, mid)
+		hip_y = lerpf(0.95, 0.82, mid)
+		want_legs = 1.0; want_arms = 1.0
 	elif a.mantle_t >= 0.0:
-		al = Vector3(deg_to_rad(155), 0, deg_to_rad(-12)); ar = Vector3(deg_to_rad(155), 0, deg_to_rad(12)); el = -0.4; er = -0.4
-		tl = 1.0; tr = 0.25; kl = 1.5; kr = 0.5; lean = -0.25
+		# climb: reach up and grab the edge, then push down and drive a knee up while the body comes over
+		var mk := clampf(a.mantle_t / maxf(a.mantle_dur, 0.01), 0.0, 1.0)
+		var pull := clampf((mk - 0.35) / 0.4, 0.0, 1.0)
+		al = Vector3(lerpf(deg_to_rad(165), deg_to_rad(40), pull), 0, deg_to_rad(-14)); ar = Vector3(lerpf(deg_to_rad(165), deg_to_rad(40), pull), 0, deg_to_rad(14))
+		el = lerpf(-0.2, -0.9, pull); er = el
+		tl = lerpf(1.0, 0.7, pull); tr = lerpf(0.25, -0.1, pull); kl = lerpf(1.5, 0.9, pull); kr = lerpf(0.5, 0.3, pull)
+		lean = lerpf(-0.2, -0.38, pull)
 		want_legs = 1.0; want_arms = 1.0
 	elif st == Actor.State.SWIM:
 		if hv > 0.8:
@@ -311,10 +326,15 @@ func animate(delta: float, a: Actor) -> void:
 		elif hv > 3.6:
 			c = "Run"
 			speed = clampf(hv / 5.2, 0.6, 1.8)
+			if a.tsprint_k > 0.05:
+				speed = clampf(hv / 5.2, 0.6, 2.3) * (1.0 + 0.1 * a.tsprint_k)
+				lean = -0.2 * a.tsprint_k
 		elif hv > 0.4:
 			c = "Walk"
 			speed = clampf(hv / 1.5, 0.6, 2.4)
-		if a.using > 0.0:
+		if a.tsprint_k > 0.15 and a.using <= 0.0:
+			arm_mode = "tsprint"
+		elif a.using > 0.0:
 			arm_mode = "use"
 		elif armed and a.reloading > 0.0:
 			arm_mode = "reload"
@@ -356,6 +376,15 @@ func animate(delta: float, a: Actor) -> void:
 			d["LeftUpperArm"] = (f * 0.55 + dn * 0.8 + r * 0.2).normalized()
 			d["LeftLowerArm"] = (f * 0.85 + r * 0.55).normalized().slerp((dn * 0.7 + f * 0.3 + r * 0.45).normalized(), k)
 			want_arms = 1.0
+		"tsprint":                              # gun lowered by the right hip, left arm pumping
+			phase += delta * hv * 1.05
+			var pump := sin(phase) * 0.9
+			var w := clampf(a.tsprint_k, 0.0, 1.0)
+			d["RightUpperArm"] = (dn * 0.95 + f * 0.1 + r * 0.2).normalized()
+			d["RightLowerArm"] = (dn * 0.55 + f * 0.6 - r * 0.15).normalized()
+			d["LeftUpperArm"] = (Basis(Vector3.RIGHT, pump) * Vector3.DOWN + r * -0.12).normalized()
+			d["LeftLowerArm"] = (Basis(Vector3.RIGHT, pump + 1.3) * Vector3.DOWN + r * -0.1).normalized()
+			want_arms = w
 		"use":
 			d["LeftUpperArm"] = (f * 0.8 + dn * 0.55 - r * 0.15).normalized()
 			d["RightUpperArm"] = (f * 0.8 + dn * 0.55 + r * 0.15).normalized()
@@ -389,6 +418,8 @@ func animate(delta: float, a: Actor) -> void:
 		var bas := Basis.looking_at(-aim_w, up)
 		if held_id == "pickaxe":
 			bas = bas * Basis(Vector3.RIGHT, -0.5 - sin(swing * PI) * 1.4)
+		elif arm_mode == "tsprint":
+			bas = bas * Basis(Vector3.RIGHT, 1.0 * clampf(a.tsprint_k * 1.5, 0.0, 1.0)) * Basis(Vector3.UP, 0.15)    # muzzle down
 		elif not armed:
 			bas = bas * Basis(Vector3.RIGHT, -0.6)
 		elif arm_mode == "reload":

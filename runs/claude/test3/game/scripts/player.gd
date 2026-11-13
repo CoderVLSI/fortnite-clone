@@ -195,6 +195,8 @@ func _physics_process(delta: float) -> void:
 		a.aim_pitch = pitch
 		a.in_move = Vector2(Input.get_axis("move_left", "move_right"), Input.get_axis("move_back", "move_forward"))
 		a.in_sprint = not Input.is_action_pressed("aim")           # run by default, walk while aiming
+		a.in_tsprint = Input.is_action_pressed("sprint") and not Input.is_action_pressed("aim") and not Input.is_action_pressed("fire") and a.state == Actor.State.GROUND
+		a.in_jump_held = Input.is_action_pressed("jump")
 		if Input.is_action_just_pressed("jump"):
 			a.in_jump = true
 		if Input.is_action_just_pressed("crouch"):
@@ -269,6 +271,9 @@ func _touch_input() -> void:
 	a.aim_pitch = pitch
 	a.in_move = touch.move
 	a.in_sprint = not touch.aim
+	if touch.fire or touch.aim:
+		touch.tsprint = false
+	a.in_tsprint = touch.tsprint and not touch.aim and not touch.fire and a.state == Actor.State.GROUND
 	if touch.take("jump"):
 		a.in_jump = true
 	if touch.take("crouch"):
@@ -453,7 +458,7 @@ func _process(delta: float) -> void:
 	zoom = move_toward(zoom, 1.0 if aiming else 0.0, delta * 7.0)
 	var it = s.item()
 	var scoped: bool = it != null and it.id == "sniper_rifle"
-	cam.fov = lerpf(75.0, 22.0 if scoped else 48.0, zoom)
+	cam.fov = lerpf(75.0, 22.0 if scoped else 48.0, zoom) + 9.0 * s.tsprint_k * (1.0 - zoom)     # tactical sprint kicks the FOV out
 	var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch)
 	var back := 4.6
 	cam_up = lerpf(cam_up, 1.4 if (s.crouched or s.sliding) else 1.9, clampf(delta * 9.0, 0.0, 1.0))

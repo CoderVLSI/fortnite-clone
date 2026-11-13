@@ -10,6 +10,8 @@ var move := Vector2.ZERO                 # x = right, y = forward
 var look := Vector2.ZERO                 # accumulated drag in pixels, consumed by the player controller
 var fire := false
 var aim := false
+var tsprint := false                     # tactical sprint: the sprint button, or the stick held at its rim
+var edge_t := 0.0
 var pressed_once := {}                   # button name -> true for one tick
 var stick_id := -1
 var stick_origin := Vector2.ZERO
@@ -51,6 +53,7 @@ func buttons() -> Dictionary:
 		"jump": [r.call(80, 215), 46.0 * u, "jump"],
 		"crouch": [r.call(330, 205), 34.0 * u, "crouch"],
 		"aim": [r.call(320, 360), 38.0 * u, "aim"],
+		"sprint": [r.call(440, 190), 32.0 * u, "sprint"],
 		"build": [r.call(420, 290), 36.0 * u, "weapons" if mode != "combat" else "build"],
 		"menu": [Vector2(46 * u, 40 * u), 26.0 * u, "menu"],
 		"inv": [Vector2(112 * u, 40 * u), 26.0 * u, "inv"],
@@ -120,6 +123,10 @@ func _input(e: InputEvent) -> void:
 							look_ids[e.index] = true       # the right firing thumb can still steer the aim
 					elif name == "aim":
 						aim = not aim
+						if aim:
+							tsprint = false
+					elif name == "sprint":
+						tsprint = not tsprint
 					elif name == "menu":
 						game.pause_menu.open()
 					else:
@@ -142,6 +149,7 @@ func _input(e: InputEvent) -> void:
 			if e.index == stick_id:
 				stick_id = -1
 				move = Vector2.ZERO
+				tsprint = false
 			if button_ids.get(e.index, "") in ["fire", "fire_l"]:
 				fire = false
 			button_ids.erase(e.index)
@@ -158,7 +166,16 @@ func _input(e: InputEvent) -> void:
 			look += e.relative
 
 
-func _process(_d: float) -> void:
+func _process(d: float) -> void:
+	# pushing the stick to its outer edge for 0.3 s starts a tactical sprint; easing off ends it
+	if stick_id != -1 and move.length() > 0.96 and move.y > 0.3:
+		edge_t += d
+		if edge_t >= 0.3 and not fire and not aim:
+			tsprint = true
+	else:
+		edge_t = 0.0
+		if stick_id != -1 and move.length() < 0.5:
+			tsprint = false
 	queue_redraw()
 
 
@@ -179,7 +196,7 @@ func _draw() -> void:
 		var c: Vector2 = b[0]
 		var rad: float = b[1]
 		var held := button_ids.values().has(name)
-		var on: bool = held or (name == "aim" and aim) or ((name == "fire" or name == "fire_l") and fire) or (name == "auto" and Settings.auto_fire)
+		var on: bool = held or (name == "aim" and aim) or (name == "sprint" and tsprint) or ((name == "fire" or name == "fire_l") and fire) or (name == "auto" and Settings.auto_fire)
 		if name.begins_with("b_"):
 			on = on or game.player.build_piece == {"b_wall": "wall", "b_floor": "floor", "b_stairs": "stairs", "b_cone": "cone"}[name]
 		draw_circle(c, rad, ACTIVE if on else FILL)
@@ -223,6 +240,12 @@ func _icon(kind: String, c: Vector2, r: float, u: float) -> void:
 			_line(Vector2(c.x - r * 0.55, c.y - r * 0.45), Vector2(c.x, c.y + r * 0.05), w)
 			_line(Vector2(c.x, c.y + r * 0.05), Vector2(c.x + r * 0.55, c.y - r * 0.45), w)
 			_line(Vector2(c.x - r * 0.7, c.y + r * 0.5), Vector2(c.x + r * 0.7, c.y + r * 0.5), w)
+		"sprint":                                   # an arrow up with speed lines
+			_line(Vector2(c.x - r * 0.55, c.y - r * 0.05), Vector2(c.x, c.y - r * 0.6), w)
+			_line(Vector2(c.x, c.y - r * 0.6), Vector2(c.x + r * 0.55, c.y - r * 0.05), w)
+			_line(Vector2(c.x, c.y - r * 0.6), Vector2(c.x, c.y + r * 0.6), w)
+			_line(Vector2(c.x - r * 0.5, c.y + r * 0.3), Vector2(c.x - r * 0.5, c.y + r * 0.75), w * 0.8)
+			_line(Vector2(c.x + r * 0.5, c.y + r * 0.3), Vector2(c.x + r * 0.5, c.y + r * 0.75), w * 0.8)
 		"reload", "reset":                          # circular arrow
 			draw_arc(c, r * 0.6, -PI * 0.35, PI * 1.45, 28, ICON, w, true)
 			var tip := c + Vector2(cos(-PI * 0.35), sin(-PI * 0.35)) * r * 0.6

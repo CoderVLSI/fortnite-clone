@@ -7,6 +7,10 @@ enum State { BLIMP, SKYDIVE, GLIDE, GROUND, DEAD, SWIM }
 
 const WALK := 5.2
 const SPRINT := 7.6
+const TSPRINT := 9.5                     # tactical sprint (Shift): gun lowered, no firing
+const TSPRINT_WIND := 0.35               # seconds to wind up to full tactical speed
+const HURDLE_MIN := 0.5                  # obstacles this high (m) are vaulted at a run, not stepped or mantled
+const HURDLE_MAX := 1.3
 const JUMP := 8.2
 const GRAVITY := 24.0
 const GLIDER_HEIGHT := 42.0
@@ -63,6 +67,19 @@ var bloom := 0.0                         # extra spread from firing quickly; dec
 # control inputs, written by the player or the bot brain every physics tick
 var in_move := Vector2.ZERO              # x = right, y = forward, relative to aim_yaw
 var in_sprint := false
+var in_tsprint := false                  # tactical sprint wanted (player: Shift held; bots may set it too)
+var in_jump_held := false                # jump key is down (mid-air it pulls you up onto a ledge)
+var tsprint := false                     # tactical sprint under way
+var tsprint_k := 0.0                     # 0..1 wind-up blend, for the animation, camera and speed
+var tsprint_block := false               # firing, reloading or using ended it: Shift must be released first
+var hurdle_t := -1.0                     # >= 0 while vaulting over a low obstacle
+var hurdle_from := Vector3.ZERO
+var hurdle_to := Vector3.ZERO
+var hurdle_dur := 0.45
+var hurdle_arc := 0.5
+var hurdle_vel := Vector3.ZERO
+var run_target := 0.0                    # the speed the ground controls are asking for (survives hitting a wall)
+var mantle_carry := 2.0                  # horizontal speed kept when the mantle ends
 var in_jump := false
 var in_fire := false
 var in_dive := false
@@ -301,26 +318,34 @@ func depth() -> float:
 # ----------------------------------------------------------------------------- walking, crouching, sliding
 
 func _ground_move(delta: float) -> void:
+	if hurdle_t >= 0.0:
+		_hurdle_step(delta)
+		in_jump = false
+		return
 	if in_crouch:
 		in_crouch = false
 		_crouch_pressed()
+	_update_tsprint(delta)
 	if sliding:
 		_slide(delta)
 	else:
 		var speed := WALK
 		if crouched:
 			speed = CROUCH_SPEED
+		elif tsprint:
+			speed = lerpf(SPRINT, TSPRINT, tsprint_k)
 		elif in_sprint and in_move.y > 0.1 and using <= 0.0:
 			speed = SPRINT
 		if using > 0.0:
 			speed *= 0.6
+		run_target = speed * minf(_wish().length(), 1.0)
 		var w := _wish() * speed
 		var acc := 60.0 if is_on_floor() else 14.0
 		velocity.x = move_toward(velocity.x, w.x, acc * delta)
 		velocity.z = move_toward(velocity.z, w.z, acc * delta)
 	if is_on_floor():
 		if in_jump:
-			if not _try_mantle(MANTLE_MAX):
+			if not _try_hurdle() and not _try_mantle(MANTLE_MAX):
 				sliding = false
 				if crouched:
 					set_crouched(false)
@@ -331,8 +356,9 @@ func _ground_move(delta: float) -> void:
 	else:
 		velocity.y -= GRAVITY * delta
 		jump_air_t += delta
-		# jumping into a ledge pulls you up onto it
-		if jump_air_t < 0.75 and in_move.y > 0.3 and _try_mantle(MANTLE_MAX, fall_start):
+		# jumping into a ledge (or holding jump while falling past one) pulls you up onto it
+		var fresh := jump_air_t < 0.75
+		if (fresh or in_jump or in_jump_held) and in_move.y > 0.3 and _try_mantle(MANTLE_MAX, fall_start if fresh else INF):
 			in_jump = false
 			return
 	in_jump = false
@@ -414,6 +440,8 @@ func _crouch_pressed() -> void:
 		_set_height(CROUCH_H)
 		var dir := Vector3(velocity.x, 0, velocity.z).normalized()
 		var sp := maxf(hv, 9.0)
+		if tsprint_k > 0.4:
+			sp = maxf(hv * 1.12, 10.5)                   # sliding out of a tactical sprint keeps the extra speed
 		velocity.x = dir.x * sp
 		velocity.z = dir.z * sp
 		return
@@ -463,6 +491,114 @@ func _slide(delta: float) -> void:
 		crouched = true                                  # a slide always ends in a crouch
 
 
+# ----------------------------------------------------------------------------- tactical sprint and hurdling
+
+func _update_tsprint(delta: float) -> void:
+	if not in_tsprint:
+		tsprint_block = false
+	elif in_fire or burst_left > 0 or reloading > 0.0 or using > 0.0:
+		tsprint_block = true                            # firing, reloading and using items end it
+	var want := in_tsprint and not tsprint_block and in_move.y > 0.3 and not crouched and not sliding \
+			and build_piece == "" and emote == "" and (is_on_floor() or tsprint)
+	tsprint = want
+	tsprint_k = move_toward(tsprint_k, 1.0 if want else 0.0, delta / (TSPRINT_WIND if want else 0.2))
+
+
+func _try_hurdle() -> bool:
+	## Jump while running at a low, thin obstacle (HURDLE_MIN..HURDLE_MAX high) with floor beyond it: vault over in one arc.
+	var hv := Vector3(velocity.x, 0, velocity.z)
+	if hv.length() < 4.5 or in_move.y < 0.2 or crouched or sliding:
+		return false
+	var fwd := hv.normalized()
+	var feet := global_position
+	var wall := {}
+	for hgt in [0.25, 0.45, 0.7]:
+		var o: Vector3 = feet + Vector3(0, hgt, 0)
+		var r: Dictionary = game.ray(o, o + fwd * 1.3, self, 1)
+		if not r.is_empty() and r.normal.y < 0.6:
+			wall = r
+			break
+	if wall.is_empty():
+		return false
+	var d := Vector2(wall.position.x - feet.x, wall.position.z - feet.z).length()
+	# the top of the obstacle, and how far it runs along our path
+	var top := -INF
+	var edge := d
+	var s := d + 0.04
+	while s < d + 1.7:
+		var o: Vector3 = feet + fwd * s + Vector3(0, HURDLE_MAX + 0.4, 0)
+		var r: Dictionary = game.ray(o, o - Vector3(0, HURDLE_MAX + 0.4 - 0.1, 0), self, 1)
+		if r.is_empty() or r.normal.y < 0.7:
+			break
+		if top == -INF:
+			top = r.position.y
+			var h0: float = top - feet.y
+			if h0 < HURDLE_MIN or h0 > HURDLE_MAX:
+				return false
+		elif absf(r.position.y - top) > 0.12:
+			break
+		edge = s + 0.08
+		s += 0.08
+	if top == -INF or edge - d > 1.45:
+		return false                                    # not an obstacle, or too thick to clear: mantle instead
+	# floor to land on, 0.6 to 2 m past the far edge, with room to stand
+	var land := Vector3.ZERO
+	for beyond in [0.7, 1.1, 1.6]:
+		var o: Vector3 = feet + fwd * (edge + beyond) + Vector3(0, HURDLE_MAX + 0.4, 0)
+		var r: Dictionary = game.ray(o, Vector3(o.x, feet.y - 1.6, o.z), self, 1)
+		if r.is_empty() or r.normal.y < 0.7 or r.position.y > feet.y + 0.45 or r.position.y < feet.y - 1.5:
+			continue
+		var q := PhysicsShapeQueryParameters3D.new()
+		var cap := CapsuleShape3D.new()
+		cap.radius = 0.3
+		cap.height = 1.3
+		q.shape = cap
+		q.collision_mask = 1
+		q.transform = Transform3D(Basis.IDENTITY, r.position + Vector3(0, 0.9, 0))
+		if not get_world_3d().direct_space_state.intersect_shape(q, 1).is_empty():
+			continue
+		land = r.position + Vector3(0, 0.03, 0)
+		break
+	if land == Vector3.ZERO:
+		return false
+	var lift := Vector3(0, top + 0.35, 0)                # nothing in the way above the obstacle
+	if not game.ray(Vector3(feet.x, 0, feet.z) + lift, Vector3(land.x, 0, land.z) + lift, self, 1).is_empty():
+		return false
+	hurdle_from = feet
+	hurdle_to = land
+	var dist := Vector2(land.x - feet.x, land.z - feet.z).length()
+	var spd := maxf(hv.length(), 6.5)
+	hurdle_dur = clampf(dist / spd, 0.34, 0.65)
+	# arc height: enough that the feet clear the top for the whole stretch over the obstacle
+	var arc := 0.45
+	var k0 := d / dist
+	while k0 <= minf(edge / dist + 0.05, 0.95):
+		var base_y := lerpf(feet.y, land.y, k0)
+		arc = maxf(arc, (top + 0.28 - base_y) / maxf(4.0 * k0 * (1.0 - k0), 0.05))
+		k0 += 0.05
+	hurdle_arc = minf(arc, 2.0)
+	hurdle_vel = fwd * hv.length()
+	hurdle_t = 0.0
+	sliding = false
+	cancel_use()
+	game.sfx("jump", global_position)
+	return true
+
+
+func _hurdle_step(delta: float) -> void:
+	hurdle_t += delta
+	var k := clampf(hurdle_t / hurdle_dur, 0.0, 1.0)
+	var p := hurdle_from.lerp(hurdle_to, k)
+	p.y += 4.0 * k * (1.0 - k) * hurdle_arc
+	global_position = p
+	velocity = hurdle_vel
+	if k >= 1.0:
+		hurdle_t = -1.0
+		velocity = hurdle_vel                          # keeps its speed
+		fall_start = global_position.y
+		jump_air_t = 99.0
+
+
 # ----------------------------------------------------------------------------- mantling
 
 func _try_mantle(max_h: float, base_y := INF) -> bool:
@@ -503,6 +639,8 @@ func _try_mantle(max_h: float, base_y := INF) -> bool:
 	q.transform = Transform3D(Basis.IDENTITY, down.position + Vector3(0, 0.68, 0))
 	if not get_world_3d().direct_space_state.intersect_shape(q, 1).is_empty():
 		return false
+	var hv0 := Vector2(velocity.x, velocity.z).length()
+	mantle_carry = clampf(maxf(hv0, run_target) * 0.75, 2.5, 6.5) if in_move.y > 0.1 else 2.0
 	mantle_from = feet
 	mantle_to = down.position + Vector3(0, 0.03, 0) + fwd * 0.15
 	mantle_t = 0.0
@@ -531,7 +669,7 @@ func _mantle_step(delta: float) -> void:
 			_leave_water()
 		state = State.GROUND
 		var dir := Vector3(mantle_to.x - mantle_from.x, 0, mantle_to.z - mantle_from.z).normalized()
-		velocity = dir * 2.0
+		velocity = dir * mantle_carry                      # no dead stop at the top
 		fall_start = global_position.y
 		jump_air_t = 99.0
 
@@ -773,6 +911,9 @@ func find_item(id: String) -> int:
 # ----------------------------------------------------------------------------- combat
 
 func _combat(delta: float) -> void:
+	if (tsprint or hurdle_t >= 0.0) and using <= 0.0 and reloading <= 0.0:
+		burst_left = 0                                 # gun lowered while sprinting or vaulting
+		return
 	var it = item()
 	if using > 0.0:
 		using -= delta
