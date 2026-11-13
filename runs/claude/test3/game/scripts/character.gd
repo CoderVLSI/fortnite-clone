@@ -299,6 +299,18 @@ func animate(delta: float, a: Actor) -> void:
 			al = Vector3(0.5, 0, -1.1 + sin(phase) * 0.35); ar = Vector3(0.5, 0, 1.1 - sin(phase) * 0.35); el = -0.3; er = -0.3
 			tl = sin(phase) * 0.5; tr = -sin(phase) * 0.5; kl = maxf(0.0, cos(phase)) * 0.9; kr = maxf(0.0, -cos(phase)) * 0.9
 		want_legs = 1.0; want_arms = 1.0
+	elif a.knocked:
+		# crawling on the belly: body tipped nearly flat, arms reaching forward in turn, legs trailing
+		var moving := hv > 0.3
+		phase += delta * (4.0 if moving else 1.2)
+		var sw := sin(phase) * (0.5 if moving else 0.12)
+		lean = -1.38
+		hip_y = 0.42
+		al = Vector3(2.6 + sw, 0, -0.35); ar = Vector3(2.6 - sw, 0, 0.35)
+		el = -0.4; er = -0.4
+		tl = -0.15 + sw * 0.4; tr = -0.15 - sw * 0.4; kl = 0.5; kr = 0.5
+		c = "Idle"
+		want_legs = 1.0; want_arms = 1.0
 	elif a.sliding:
 		hip_y = 0.5
 		lean = 0.3

@@ -147,9 +147,15 @@ func close_talk() -> void:
 
 func on_player_eliminated(killer: Actor) -> void:
 	spectate = killer if killer != null and killer.alive() else _next_alive(null)
+	var mate: Actor = game.partner_of(a)
+	if mate != null and mate.alive():
+		spectate = mate                                # Duos: follow the teammate who is still in
 
 
 func _next_alive(after: Actor) -> Actor:
+	var mate: Actor = game.partner_of(a)
+	if mate != null and mate.alive():
+		return mate
 	var list: Array = game.actors
 	var start: int = list.find(after) if after != null else -1
 	for i in range(1, list.size() + 1):
@@ -261,7 +267,7 @@ func _physics_process(delta: float) -> void:
 	if not a.alive() and touch != null and touch.fire:
 		touch.fire = false
 		spectate = _next_alive(spectate)
-	if not a.alive() and (spectate == null or not spectate.alive()):
+	if not a.alive() and (spectate == null or not spectate.alive() or (game.partner_of(a) != null and game.partner_of(a).alive() and spectate != game.partner_of(a))):
 		spectate = _next_alive(spectate)
 
 
@@ -391,6 +397,7 @@ func _key_hint() -> String:
 
 
 func _interaction() -> void:
+	if game.try_revive(a, Input.is_action_pressed("interact") or touch_use, self): return    # Duos: hold E on a knocked teammate
 	if a.state == Actor.State.SKYDIVE and not a.launched:
 		if a.height_above_ground() > 8.0:
 			prompt = _key_hint() + " Deploy glider"
@@ -478,7 +485,7 @@ func _process(delta: float) -> void:
 	cam.fov = lerpf(75.0, 22.0 if scoped else 48.0, zoom) + 9.0 * s.tsprint_k * (1.0 - zoom)     # tactical sprint kicks the FOV out
 	var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch)
 	var back := 4.6
-	cam_up = lerpf(cam_up, 1.4 if (s.crouched or s.sliding) else 1.9, clampf(delta * 9.0, 0.0, 1.0))
+	cam_up = lerpf(cam_up, 1.0 if s.knocked else (1.4 if (s.crouched or s.sliding) else 1.9), clampf(delta * 9.0, 0.0, 1.0))
 	var up := cam_up
 	var side := 0.75
 	if s.state == Actor.State.BLIMP:

@@ -3,6 +3,8 @@ extends Control
 
 const MAP_METRES := 900.0                 # the minimap texture covers 900 x 900 m centred on the island (build_island.gd)
 const STORM_COL := Color(0.62, 0.3, 0.95)
+const TEAM_COL := Color(0.25, 0.95, 0.8)          # the duo teammate: map marker, world marker, bars
+const KNOCK_COL := Color(1.0, 0.3, 0.25)
 
 var game: Node
 var font: Font
@@ -145,6 +147,7 @@ func _draw() -> void:
 	_draw_hotbar(sz, s)
 	_draw_centre(sz, s, ctl, now)
 	_draw_notes(sz, now)
+	_draw_team(sz, s, ctl, now)
 	_draw_boss_bar(sz)
 	_draw_poi_banner(sz)
 	if game.warming_up():
@@ -166,7 +169,11 @@ func _draw() -> void:
 	if not p.alive() and not game.over:
 		panel(Rect2(sz.x / 2 - 260, sz.y - 250, 520, 64))
 		txt(Vector2(0, sz.y - 222), "Spectating  %s" % s.display_name, 24, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, sz.x)
-		txt(Vector2(0, sz.y - 198), "You placed #%d with %d eliminations    [Click] next player" % [p.placement, p.kills], 16, Color(0.85, 0.88, 0.92), HORIZONTAL_ALIGNMENT_CENTER, sz.x)
+		var mate: Actor = game.partner_of(p)
+		if mate != null and mate.alive():
+			txt(Vector2(0, sz.y - 198), "You are out  ·  your team plays on  ·  %d eliminations" % p.kills, 16, Color(0.85, 0.88, 0.92), HORIZONTAL_ALIGNMENT_CENTER, sz.x)
+		else:
+			txt(Vector2(0, sz.y - 198), "You placed #%d with %d eliminations    [Click] next player" % [p.placement, p.kills], 16, Color(0.85, 0.88, 0.92), HORIZONTAL_ALIGNMENT_CENTER, sz.x)
 	if game.over and not game.summary_shown:                       # the summary panel replaces the banner
 		_draw_end(sz, p)
 
@@ -268,6 +275,7 @@ func _draw_map(origin: Vector2, extent: float, centre: Vector2, span: float, s: 
 		var ms := (16.0 if big else 12.0) * (1.0 + (0.25 * sin(game.match_time * 6.0) if not d.landed else 0.0))
 		if not draw_icon("supply_drop", Rect2(mp - Vector2(ms, ms), Vector2(ms, ms) * 2.0)):
 			draw_circle(mp, ms * 0.5, Color(0.3, 0.75, 1.0))
+	_draw_team_map(origin, extent, centre, span, box, big)
 	# the player arrow
 	var pp := _map_point(Vector2(s.global_position.x, s.global_position.z), origin, extent, centre, span)
 	var yaw: float = game.controller.yaw
@@ -532,7 +540,7 @@ func _draw_feed(_sz: Vector2, now: float) -> void:
 
 func _draw_status(sz: Vector2, s: Actor) -> void:
 	var x := 60.0
-	var y := sz.y - 96.0
+	var y := sz.y - 96.0 - (46.0 if game.partner_of(game.player) != null else 0.0)     # Duos: room for the teammate's bars underneath
 	var w := 340.0
 	# shield above health
 	panel(Rect2(x - 4, y - 4, w + 8, 66))
@@ -707,7 +715,7 @@ func aiming_at_head(s: Actor, ctl: Node) -> bool:
 	if res.is_empty() or not (res.collider is Actor):
 		return false
 	var v: Actor = res.collider
-	if not v.alive() or v == s or (v.is_npc and not v.hired) or v == game.hired:
+	if not v.alive() or v == s or (v.is_npc and not v.hired) or v == game.hired or game.same_team(v, s):
 		return false
 	return v.is_head_point(res.position)
 
@@ -892,12 +900,90 @@ func _draw_notes(sz: Vector2, now: float) -> void:
 
 func _draw_end(sz: Vector2, p: Actor) -> void:
 	draw_rect(Rect2(Vector2.ZERO, sz), Color(0, 0, 0, 0.45))
-	var won: bool = game.winner == p
+	var won: bool = game.winner != null and game.same_team(game.winner, p)
 	var band := Rect2(0, sz.y * 0.3, sz.x, 190)
 	draw_rect(band, Color(0.95, 0.72, 0.15, 0.92) if won else Color(0.08, 0.1, 0.14, 0.9))
-	txt(Vector2(0, band.position.y + 88), "VICTORY!  LAST ONE STANDING" if won else "MATCH OVER", 64 if won else 56, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, sz.x)
+	txt(Vector2(0, band.position.y + 88), ("VICTORY!  LAST TEAM STANDING" if game.duos else "VICTORY!  LAST ONE STANDING") if won else "MATCH OVER", 64 if won else 56, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, sz.x)
 	var line := "#1 of %d   ·   %d eliminations" % [game.actors.size(), p.kills] if won else "You placed #%d   ·   %d eliminations   ·   %s won" % [p.placement, p.kills, game.winner.display_name if game.winner else "Nobody"]
 	txt(Vector2(0, band.position.y + 140), line, 26, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, sz.x)
+
+
+# ----------------------------------------------------------------------------- Duos: teammate, knocked, revive
+
+func _diamond(c: Vector2, r: float, col: Color) -> void:
+	var pts := PackedVector2Array([c + Vector2(0, -r), c + Vector2(r * 0.8, 0), c + Vector2(0, r), c + Vector2(-r * 0.8, 0)])
+	draw_colored_polygon(pts, col)
+	draw_polyline(PackedVector2Array([pts[0], pts[1], pts[2], pts[3], pts[0]]), Color(0, 0, 0, 0.85), 2.0)
+
+
+func _draw_team(sz: Vector2, s: Actor, ctl: Node, now: float) -> void:
+	var p: Actor = game.player
+	var mate: Actor = game.partner_of(p)
+	if mate == null:
+		return
+	var c := sz / 2
+	# teammate bars under the player's own (bottom left)
+	var x := 60.0
+	var y := sz.y - 72.0
+	var w := 340.0
+	panel(Rect2(x - 4, y - 4, w + 8, 48))
+	_diamond(Vector2(x - 20, y + 20), 9.0, KNOCK_COL if mate.knocked else (Color(0.5, 0.5, 0.5) if not mate.alive() else TEAM_COL))
+	txt(Vector2(x, y + 10), mate.display_name, 14, TEAM_COL)
+	var state := ""
+	if not mate.alive():
+		state = "ELIMINATED"
+	elif mate.knocked:
+		state = "KNOCKED  %d" % int(ceil(mate.knock_hp))
+	if state != "":
+		txt(Vector2(x, y + 10), state, 14, KNOCK_COL if mate.alive() else Color(0.7, 0.7, 0.7), HORIZONTAL_ALIGNMENT_RIGHT, w)
+	draw_rect(Rect2(x, y + 16, w, 7), Color(0.1, 0.14, 0.22, 0.9))
+	draw_rect(Rect2(x, y + 16, w * clampf(mate.shield / 100.0, 0, 1), 7), Color(0.25, 0.6, 1.0))
+	draw_rect(Rect2(x, y + 25, w, 12), Color(0.12, 0.18, 0.12, 0.9))
+	if mate.knocked:
+		draw_rect(Rect2(x, y + 25, w * clampf(mate.knock_hp / Actor.KNOCK_HP, 0, 1), 12), KNOCK_COL)
+	else:
+		draw_rect(Rect2(x, y + 25, w * clampf(mate.hp / 100.0, 0, 1), 12), Color(0.3, 0.82, 0.3) if mate.hp > 30.0 else Color(0.9, 0.3, 0.2))
+	# the teammate in the world: a diamond and a name over their head, drawn over walls, with the distance when far
+	if mate.alive() and mate != s and not ctl.cam.is_position_behind(mate.global_position):
+		var wp := mate.global_position + Vector3(0, 0.9 if mate.knocked else 2.35, 0)
+		var sp: Vector2 = ctl.cam.unproject_position(wp)
+		var dist: float = ctl.cam.global_position.distance_to(mate.global_position)
+		var col := KNOCK_COL if mate.knocked else TEAM_COL
+		_diamond(sp + Vector2(0, -26), 9.0, col)
+		txt(sp + Vector2(-80, -40), mate.display_name + ("  (knocked)" if mate.knocked else ""), 15, col, HORIZONTAL_ALIGNMENT_CENTER, 160)
+		if dist > 18.0:
+			txt(sp + Vector2(-40, -6), "%d m" % int(dist), 13, Color(1, 1, 1, 0.9), HORIZONTAL_ALIGNMENT_CENTER, 80)
+	# knocked: red edges, the bleed-out bar and a message
+	if p.knocked and s == p:
+		draw_rect(Rect2(Vector2.ZERO, sz), Color(0.7, 0.05, 0.05, 0.16 + 0.05 * sin(now * 5.0)))
+		var bw := 360.0
+		var by := sz.y * 0.62
+		txt(Vector2(0, by - 30), "KNOCKED \u2013 hold on!", 34, KNOCK_COL, HORIZONTAL_ALIGNMENT_CENTER, sz.x)
+		txt(Vector2(0, by - 4), "Revive coming" if mate.up() else "Waiting...", 18, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, sz.x)
+		draw_rect(Rect2(c.x - bw / 2, by + 8, bw, 12), Color(0, 0, 0, 0.6))
+		draw_rect(Rect2(c.x - bw / 2, by + 8, bw * clampf(p.knock_hp / Actor.KNOCK_HP, 0.0, 1.0), 12), KNOCK_COL)
+		draw_rect(Rect2(c.x - bw / 2, by + 8, bw, 12), Color(1, 1, 1, 0.4), false, 1.5)
+		if mate.up() and mate.revive_t > 0.0 and mate.revive_target == p:
+			draw_rect(Rect2(c.x - bw / 2, by + 26, bw, 8), Color(0, 0, 0, 0.6))
+			draw_rect(Rect2(c.x - bw / 2, by + 26, bw * clampf(mate.revive_t / Actor.REVIVE_TIME, 0.0, 1.0), 8), TEAM_COL)
+	# reviving: a progress bar
+	if s.revive_t > 0.0 and s.revive_target != null:
+		var rw := 260.0
+		var r := Rect2(c.x - rw / 2, c.y + 90, rw, 14)
+		draw_rect(r, Color(0, 0, 0, 0.6))
+		draw_rect(Rect2(r.position, Vector2(rw * clampf(s.revive_t / Actor.REVIVE_TIME, 0.0, 1.0), r.size.y)), TEAM_COL)
+		txt(Vector2(0, r.position.y - 8), "Reviving %s\u2026" % s.revive_target.display_name, 18, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, sz.x)
+
+
+func _draw_team_map(origin: Vector2, extent: float, centre: Vector2, span: float, box: Rect2, big: bool) -> void:
+	var mate: Actor = game.partner_of(game.player)
+	if mate == null or not mate.alive() or mate == game.controller.subject():
+		return
+	var mp := _map_point(Vector2(mate.global_position.x, mate.global_position.z), origin, extent, centre, span)
+	mp = mp.clamp(box.position + Vector2(8, 8), box.end - Vector2(8, 8))
+	_diamond(mp, 9.0 if big else 7.0, KNOCK_COL if mate.knocked else TEAM_COL)
+	if big:
+		txt(mp + Vector2(-50, -13), mate.display_name, 14, TEAM_COL, HORIZONTAL_ALIGNMENT_CENTER, 100)
 
 
 # ----------------------------------------------------------------------------- mythic weapons (ammo panel, hotbar, reticle)

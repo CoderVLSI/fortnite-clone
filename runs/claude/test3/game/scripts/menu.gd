@@ -6,7 +6,7 @@
 extends Node3D
 
 const GAME_SCENE := "res://scenes/game.tscn"
-const SKIP_FLAGS := ["--demo", "--autotest", "--buildtest", "--movetest", "--eventtest", "--poses", "--crosshairs", "--soundtest", "--invtest", "--invshot", "--profile"]
+const SKIP_FLAGS := ["--demo", "--autotest", "--buildtest", "--movetest", "--eventtest", "--duotest", "--duos", "--poses", "--crosshairs", "--soundtest", "--invtest", "--invshot", "--profile"]
 const SKIP_PREFIXES := ["--shots=", "--summarytest="]
 const NEWS := ["Snowy mountains and a desert with mesas: the island is now 800 m across",
 	"50 players per match", "New guns: SMG, tactical shotgun, burst rifle, hunting rifle",
@@ -24,6 +24,11 @@ var tab_bar: HBoxContainer
 var ready_btn: Button
 var back_btn: Button                    # the LOCKER tab: like every other way out of PLAY, locked while matchmaking
 var bots_btn: Button
+var mode_btns := {}                     # "solo" / "duos" -> segmented button on the mode card
+var mode_title: Label
+var mode_sub: Label
+var mate_char: Character                # Duos: the teammate on the stage (a "Fill" silhouette until a friend joins)
+var mate_plate: Label3D
 var status_label: Label
 var level_label: Label
 var xp_bar: ProgressBar
@@ -180,6 +185,36 @@ func _dress_character() -> void:
 	stage_char.hold("")
 	stage_char._play("Idle", 1.0)
 	emote_t = 6.0
+	_refresh_mate()
+
+
+func _refresh_mate() -> void:
+	## Duos puts a second character beside yours: a dark "Fill" silhouette (a bot fills the slot unless a friend joins).
+	var duos: bool = Settings.mode == "duos"
+	if duos and mate_char == null:
+		mate_char = Character.new()
+		pivot.add_child(mate_char)
+		mate_char.build(Color(0.1, 0.12, 0.17), Color(0.3, 0.9, 0.75), Color.WHITE, "Soldier")
+		mate_char.position = Vector3(-0.65, 0.04, -0.1)
+		mate_char.rotation.y = PI - 0.18
+		mate_char.hold("")
+		mate_char._play("Idle", 1.0)
+		mate_plate = Label3D.new()
+		mate_plate.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		mate_plate.font_size = 26
+		mate_plate.outline_size = 12
+		mate_plate.no_depth_test = true
+		mate_plate.text = "Teammate  ·  Fill"
+		mate_plate.modulate = Color(0.45, 1.0, 0.85)
+		mate_plate.position = Vector3(-0.65, 1.98, -0.1)
+		pivot.add_child(mate_plate)
+	if mate_char != null:
+		mate_char.visible = duos
+		mate_plate.visible = duos
+	if stage_char != null:
+		stage_char.position.x = 0.55 if duos else 0.0
+	if name_plate != null:
+		name_plate.position.x = 0.55 if duos else 0.0
 
 
 func _process(delta: float) -> void:
@@ -335,7 +370,7 @@ func _build_play_page() -> void:
 	var col := VBoxContainer.new()
 	col.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	col.offset_left = -470
-	col.offset_top = -330
+	col.offset_top = -400
 	col.offset_right = -36
 	col.offset_bottom = -36
 	col.alignment = BoxContainer.ALIGNMENT_END
@@ -345,12 +380,25 @@ func _build_play_page() -> void:
 	var mv := VBoxContainer.new()
 	mv.add_theme_constant_override("separation", 4)
 	mode.add_child(mv)
-	mv.add_child(MenuUI.label("SOLO", 34, Color.WHITE))
-	mv.add_child(MenuUI.label("Battle royale  ·  50 players  ·  last one standing wins", 16, MenuUI.DIM))
+	var seg := HBoxContainer.new()
+	seg.add_theme_constant_override("separation", 6)
+	mv.add_child(seg)
+	for m in ["solo", "duos"]:
+		var mb := MenuUI.button(m.capitalize(), 20, Vector2(0, 38))
+		mb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		mb.pressed.connect(_set_mode.bind(m))
+		seg.add_child(mb)
+		mode_btns[m] = mb
+	mode_title = MenuUI.label("SOLO", 34, Color.WHITE)
+	mv.add_child(mode_title)
+	mode_sub = MenuUI.label("", 16, MenuUI.DIM)
+	mode_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	mv.add_child(mode_sub)
 	bots_btn = MenuUI.button("", 18, Vector2(0, 40))
 	bots_btn.pressed.connect(_cycle_bots)
 	mv.add_child(bots_btn)
 	_refresh_bots_btn()
+	_refresh_mode()
 	col.add_child(mode)
 	status_label = MenuUI.label("", 22, Color.WHITE)
 	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -539,6 +587,28 @@ func _set_tabs_locked(on: bool) -> void:
 	for t in tabs:
 		tabs[t].disabled = on and t != "PLAY"
 	bots_btn.disabled = on
+	for m in mode_btns:
+		mode_btns[m].disabled = on
+
+
+func _set_mode(m: String) -> void:
+	Settings.mode = m
+	Settings.save_file()
+	_refresh_mode()
+
+
+func _refresh_mode() -> void:
+	var duos: bool = Settings.mode == "duos"
+	if mode_title == null:
+		return
+	mode_title.text = "DUOS" if duos else "SOLO"
+	mode_sub.text = "Team of two  ·  a bot fills your slot  ·  revive each other  ·  last team standing wins" if duos else "Battle royale  ·  50 players  ·  last one standing wins"
+	for m in mode_btns:
+		var on: bool = (m == "duos") == duos
+		mode_btns[m].add_theme_color_override("font_color", MenuUI.ACCENT if on else MenuUI.DIM)
+		mode_btns[m].add_theme_color_override("font_hover_color", MenuUI.ACCENT if on else Color.WHITE)
+		mode_btns[m].add_theme_stylebox_override("normal", MenuUI.box(Color(0.16, 0.2, 0.32, 0.95) if on else Color(0.06, 0.08, 0.14, 0.8), MenuUI.ACCENT if on else Color(1, 1, 1, 0.12), 8))
+	_refresh_mate()
 
 
 func _refresh_bots_btn() -> void:
