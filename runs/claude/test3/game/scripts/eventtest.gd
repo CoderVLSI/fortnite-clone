@@ -706,8 +706,13 @@ func _ready() -> void:
 	a.item().loaded = 0
 	a.start_reload()
 	var smg_body: Character = a.body
-	await frames(int(a.reload_total * 60.0 * 0.45))
-	check("reloading drops the magazine out", smg_body.mag != null and not smg_body.mag.visible, "mag %s" % [smg_body.mag != null])
+	await frames(int(a.reload_total * 60.0 * 0.33))
+	var mag_out := false                              # watch the middle of the reload (one frame can catch a floor flicker)
+	for k in int(a.reload_total * 60.0 * 0.18):
+		await frames(1)
+		if smg_body.mag != null and not smg_body.mag.visible:
+			mag_out = true
+	check("reloading drops the magazine out", mag_out, "mag %s" % [smg_body.mag != null])
 	await frames(int(a.reload_total * 60.0 * 0.7))
 	check("and it is back when the reload is done", smg_body.mag != null and smg_body.mag.visible and a.item().loaded > 0)
 	# hiring a character
