@@ -1052,8 +1052,8 @@ func _best_mat(pieces := 1) -> String:
 
 
 func _place(piece: String, yaw: float, pitch := 0.0) -> bool:
-	## Build one piece the way the player does: the same target rules, facing `yaw`.
-	if a.state != Actor.State.GROUND or game.match_time < build_next:
+	## Build one piece the way the player does: the same target rules, facing `yaw`. Bosses never build.
+	if a.is_boss or a.state != Actor.State.GROUND or game.match_time < build_next:
 		return false
 	var m := _best_mat()
 	if m == "":

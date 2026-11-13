@@ -132,6 +132,9 @@ func _input(e: InputEvent) -> void:
 					else:
 						pressed_once[name] = true
 					return
+			if game.controller != null and game.controller.show_map and game.hud != null and game.hud.fullmap_rect.has_point(p):
+				game.controller.map_tap(p)               # the open map: a tap marks (or clears) a spot
+				return
 			var slot := _hotbar_slot(p)
 			if slot > -2:
 				game.player.select(slot)

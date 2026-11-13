@@ -384,6 +384,39 @@ func _build_play_page() -> void:
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		nv.add_child(l)
 	lobby_box.add_child(news)
+	# bottom centre, under the character: emotes (or press B to cycle them)
+	var em := HBoxContainer.new()
+	em.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	em.offset_left = -230
+	em.offset_right = 230
+	em.offset_top = -86
+	em.offset_bottom = -36
+	em.alignment = BoxContainer.ALIGNMENT_CENTER
+	em.add_theme_constant_override("separation", 8)
+	lobby_box.add_child(em)
+	for e in LOBBY_EMOTES:
+		var b := MenuUI.button(e[0], 18, Vector2(130, 46))
+		b.pressed.connect(lobby_emote.bind(e[1], e[2]))
+		em.add_child(b)
+
+
+const LOBBY_EMOTES := [["Dance", "x/Michelle_SambaDance", 0.0], ["Nod", "x/Xbot_agree", 1.8], ["No way", "x/Xbot_headShake", 2.5]]
+var lobby_emote_i := 0
+
+
+func lobby_emote(clip: String, length: float) -> void:
+	## Play an emote on the lobby character; a dance keeps going until the next emote or about 9 s.
+	if stage_char == null:
+		return
+	stage_char._play(clip, 1.0)
+	emote_t = 9.0 if length <= 0.0 else length
+
+
+func _unhandled_key_input(e: InputEvent) -> void:
+	if e is InputEventKey and e.pressed and not e.echo and e.keycode == KEY_B and lobby_box != null and lobby_box.visible:
+		var em: Array = LOBBY_EMOTES[lobby_emote_i % LOBBY_EMOTES.size()]
+		lobby_emote_i += 1
+		lobby_emote(em[1], em[2])
 
 
 func _build_locker_page() -> void:

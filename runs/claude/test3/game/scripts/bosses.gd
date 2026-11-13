@@ -190,7 +190,7 @@ func _spawn_boss(id: String, v: Dictionary) -> void:
 	for t in Items.AMMO_TYPES:
 		a.ammo[t] = 400
 	for t in Structures.MATS:
-		a.mats[t] = 40                                # a few cover walls, not a fortress
+		a.mats[t] = 0                                 # bosses fight in the open: they never build
 	var fallback := false
 	for m in spec.mythics:
 		if Items.DEFS.has(m):

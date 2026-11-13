@@ -136,7 +136,9 @@ func _draw() -> void:
 		_draw_scope(sz)                            # under the rest of the HUD
 	_draw_world_numbers(ctl.cam, now)
 	_draw_arcs(sz, ctl, now)
+	_draw_marker_world(sz, ctl, s)
 	_draw_compass(sz, ctl.yaw)
+	_draw_marker_compass(sz, ctl, s)
 	_draw_minimap(sz, s)
 	_draw_feed(sz, now)
 	_draw_status(sz, s)
@@ -395,6 +397,7 @@ func _draw_minimap(sz: Vector2, s: Actor) -> void:
 	centre = centre.clamp(Vector2(-MAP_METRES / 2 + span / 2, -MAP_METRES / 2 + span / 2), Vector2(MAP_METRES / 2 - span / 2, MAP_METRES / 2 - span / 2))
 	draw_rect(Rect2(origin - Vector2(3, 3), Vector2(extent + 6, extent + 6)), Color(0.05, 0.07, 0.1, 0.8))
 	_draw_map(origin, extent, centre, span, s, false)
+	_draw_marker_map(origin, extent, centre, span, true)
 	draw_rect(Rect2(origin, Vector2(extent, extent)), Color(1, 1, 1, 0.5), false, 2.0)
 	# storm timer, players left, eliminations
 	var st: Storm = game.storm
@@ -429,7 +432,89 @@ func _draw_full_map(sz: Vector2, s: Actor) -> void:
 		var o := extent * (0.5 + (i - 5) * 100.0 / MAP_METRES)
 		draw_line(origin + Vector2(o, 0), origin + Vector2(o, extent), Color(1, 1, 1, 0.18), 1.0)
 		draw_line(origin + Vector2(0, o), origin + Vector2(extent, o), Color(1, 1, 1, 0.18), 1.0)
-	txt(Vector2(0, origin.y - 14), "ISLAND MAP   [M] close", 20, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, sz.x)
+	_draw_marker_map(origin, extent, Vector2.ZERO, MAP_METRES, false)
+	fullmap_rect = Rect2(origin, Vector2(extent, extent))
+	var how := "tap the map to mark a spot  ·  tap the mark to clear it" if game.controller.touch != null else "[M] close   ·   click to mark a spot   ·   click it again or right-click to clear"
+	txt(Vector2(0, origin.y - 14), "ISLAND MAP   " + how, 20, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, sz.x)
+
+
+# ----------------------------------------------------------------------------- the map marker (player.gd owns it)
+
+const MARK_COL := Color(1.0, 0.82, 0.18)
+var fullmap_rect := Rect2()                   # where the full map was last drawn (screen), for clicks and taps
+
+
+func map_screen_to_world(p: Vector2) -> Vector2:
+	## A point on the full map -> world x, z (metres).
+	return (p - fullmap_rect.position - fullmap_rect.size / 2) / fullmap_rect.size.x * MAP_METRES
+
+
+func _pin(c: Vector2, size: float, alpha := 1.0) -> void:
+	## A map pin: a drop shape with a dark outline and a white dot.
+	var top := c - Vector2(0, size * 1.9)
+	var pts := PackedVector2Array()
+	for k in 17:
+		var a := PI + PI * k / 16.0
+		pts.append(top + Vector2(cos(a), sin(a)) * size)
+	pts.append(c)
+	var outline := PackedVector2Array(pts)
+	outline.append(pts[0])
+	draw_colored_polygon(pts, Color(MARK_COL.r, MARK_COL.g, MARK_COL.b, alpha))
+	draw_polyline(outline, Color(0.1, 0.07, 0.0, 0.9 * alpha), 2.0)
+	draw_circle(top, size * 0.38, Color(1, 1, 1, alpha))
+
+
+func _draw_marker_map(origin: Vector2, extent: float, centre: Vector2, span: float, small: bool) -> void:
+	var m: Vector3 = game.controller.marker
+	if m == Vector3.INF:
+		return
+	var p := _map_point(Vector2(m.x, m.z), origin, extent, centre, span)
+	var box := Rect2(origin, Vector2(extent, extent)).grow(-6.0)
+	if small and not box.has_point(p):
+		p = p.clamp(box.position, box.end)              # off the minimap: a pin on the rim, pointing the way
+		draw_circle(p, 6.0, Color(MARK_COL.r, MARK_COL.g, MARK_COL.b, 0.9))
+		return
+	_pin(p, 7.0 if small else 11.0)
+
+
+func _draw_marker_compass(sz: Vector2, ctl: Node, s: Actor) -> void:
+	var m: Vector3 = ctl.marker
+	if m == Vector3.INF:
+		return
+	var to := Vector2(m.x - s.global_position.x, m.z - s.global_position.z)
+	var heading := fposmod(-rad_to_deg(ctl.yaw), 360.0)
+	var bearing := fposmod(rad_to_deg(atan2(to.x, -to.y)), 360.0)
+	var rel := fposmod(bearing - heading + 180.0, 360.0) - 180.0
+	var w := 520.0
+	var x := sz.x / 2 + clampf(rel, -78.0, 78.0) / 78.0 * (w / 2 - 14)
+	_pin(Vector2(x, 46), 6.0, 1.0 if absf(rel) <= 78.0 else 0.6)
+	txt(Vector2(x - 40, 98), "%d m" % int(to.length()), 14, MARK_COL, HORIZONTAL_ALIGNMENT_CENTER, 80)
+
+
+func _draw_marker_world(sz: Vector2, ctl: Node, s: Actor) -> void:
+	## The marked spot in the world: a pin and the distance, through walls; it sits on the screen edge when off-screen.
+	var m: Vector3 = ctl.marker
+	if m == Vector3.INF or ctl.show_map:
+		return
+	var cam: Camera3D = ctl.cam
+	var spot := m + Vector3(0, 2.0, 0)
+	var dist := Vector2(m.x - s.global_position.x, m.z - s.global_position.z).length()
+	var p: Vector2
+	var on_screen := not cam.is_position_behind(spot)
+	if on_screen:
+		p = cam.unproject_position(spot)
+		on_screen = Rect2(Vector2.ZERO, sz).grow(-30.0).has_point(p)
+	if not on_screen:
+		var local := cam.global_transform.basis.inverse() * (spot - cam.global_position)
+		var dir := Vector2(local.x, -local.y)
+		if dir.length() < 0.01:
+			dir = Vector2(0, 1)
+		var c := sz / 2
+		var r := Rect2(Vector2.ZERO, sz).grow(-46.0)
+		var k := minf(absf((r.size.x / 2) / dir.x) if absf(dir.x) > 0.001 else 1e9, absf((r.size.y / 2) / dir.y) if absf(dir.y) > 0.001 else 1e9)
+		p = c + dir * k
+	_pin(p + Vector2(0, 10), 10.0, 0.95)
+	txt(p + Vector2(-50, 30), "%d m" % int(dist), 16, MARK_COL, HORIZONTAL_ALIGNMENT_CENTER, 100)
 
 
 func _draw_feed(_sz: Vector2, now: float) -> void:

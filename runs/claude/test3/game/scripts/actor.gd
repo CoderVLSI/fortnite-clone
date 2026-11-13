@@ -859,7 +859,7 @@ func _spare_ammo(it: Dictionary) -> void:
 	var d: Dictionary = Items.def(it)
 	if d.ammo == "none":
 		return
-	ammo[d.ammo] += maxi(int(d.mag) * 2, int(Items.AMMO_PICKUP[d.ammo]))
+	ammo[d.ammo] += maxi(int(d.mag) * 3, int(Items.AMMO_PICKUP[d.ammo]) * 2)
 
 
 func drop_slot(i: int) -> void:

@@ -57,6 +57,7 @@ runs/claude/test3/
 | Edit | G |
 | Inventory / drop item | Tab / X |
 | Map / emote | M / B |
+| Mark a spot (landing, rotation) | M, then click the map (click it again or right-click to clear) |
 | Pause | Esc |
 
 **Phone:** a joystick, drag-to-look and icon buttons laid out like a mobile battle royale. The buttons are fire on both

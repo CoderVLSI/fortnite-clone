@@ -13,6 +13,8 @@ var yaw := 0.0
 var pitch := -0.2
 var spectate: Actor
 var show_map := false
+var marker := Vector3.INF                 # a spot marked on the map (Vector3.INF = none): pin on the HUD, a beam in the world
+var marker_beam: MeshInstance3D
 var prompt := ""
 var prompt_target = null
 var zoom := 0.0
@@ -171,6 +173,11 @@ func _unhandled_input(e: InputEvent) -> void:
 				game.pause_menu.open()                     # Esc pauses (was: toggle mouse capture)
 			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
 				a.select(e.physical_keycode - KEY_1)
+	elif e is InputEventMouseButton and e.pressed and show_map:
+		if e.button_index == MOUSE_BUTTON_LEFT:
+			map_tap(e.position)
+		elif e.button_index == MOUSE_BUTTON_RIGHT:
+			clear_marker()
 	elif e is InputEventMouseButton and e.pressed:
 		if inv_open():
 			pass                                       # the inventory owns the mouse
@@ -242,7 +249,7 @@ func _physics_process(delta: float) -> void:
 		if Input.is_action_just_pressed("drop_item"):
 			a.drop_slot(a.active)
 		if Input.is_action_just_pressed("map"):
-			show_map = not show_map
+			toggle_map()
 		_interaction()
 	elif a.alive() and demo:
 		yaw = lerp_angle(yaw, a.aim_yaw, clampf(delta * 4.0, 0.0, 1.0))
@@ -327,7 +334,7 @@ func _touch_input() -> void:
 	if touch.take("drop"):
 		a.drop_slot(a.active)
 	if touch.take("map"):
-		show_map = not show_map
+		toggle_map()
 	touch_use = touch.take("use")
 	_interaction()
 	if not a.alive() and touch.fire:
@@ -458,6 +465,9 @@ func _process(delta: float) -> void:
 	var s := subject()
 	if s == null:
 		return
+	if marker_beam != null and marker_beam.visible:          # the beam fades as you get close, so it never blinds you
+		var md := Vector2(marker.x - s.global_position.x, marker.z - s.global_position.z).length()
+		(marker_beam.material_override as StandardMaterial3D).albedo_color.a = clampf(md / 160.0, 0.08, 0.45)
 	if not a.alive():
 		yaw = lerp_angle(yaw, s.aim_yaw, clampf(delta * 5.0, 0.0, 1.0))
 		pitch = lerpf(pitch, -0.18, clampf(delta * 3.0, 0.0, 1.0))
@@ -508,3 +518,56 @@ func aim_point() -> Vector3:
 	var dir := -cam.global_transform.basis.z
 	var res = game.ray(from + dir * 2.0, from + dir * 420.0, a)
 	return res.position if not res.is_empty() else from + dir * 420.0
+
+
+# ----------------------------------------------------------------------------- the map and its marker
+
+func toggle_map() -> void:
+	## The full map frees the mouse so a spot can be clicked; closing it gives the mouse back to the camera.
+	show_map = not show_map
+	if touch != null or demo:
+		return
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if show_map else Input.MOUSE_MODE_CAPTURED
+
+
+func map_tap(screen: Vector2) -> void:
+	## Click or tap on the full map: mark that spot, or clear the mark when the tap lands on it.
+	var hud = game.hud
+	if hud == null or not hud.fullmap_rect.has_point(screen):
+		return
+	var w: Vector2 = hud.map_screen_to_world(screen)
+	if marker != Vector3.INF and Vector2(marker.x, marker.z).distance_to(w) < 14.0:
+		clear_marker()
+		return
+	set_marker(w)
+
+
+func set_marker(w: Vector2) -> void:
+	marker = Vector3(w.x, game.terrain.height(w.x, w.y), w.y)
+	if marker_beam == null:
+		# a tall, thin, glowing column so the spot is easy to steer to from the blimp and while skydiving
+		marker_beam = MeshInstance3D.new()
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 1.5
+		cyl.bottom_radius = 1.5
+		cyl.height = 300.0
+		cyl.radial_segments = 10
+		cyl.rings = 1
+		marker_beam.mesh = cyl
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.albedo_color = Color(1.0, 0.82, 0.18, 0.45)
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		marker_beam.material_override = mat
+		marker_beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		game.add_child(marker_beam)
+	marker_beam.global_position = marker + Vector3(0, 150.0, 0)
+	marker_beam.visible = true
+	game.sfx("hit_marker", Vector3.INF)
+
+
+func clear_marker() -> void:
+	marker = Vector3.INF
+	if marker_beam != null:
+		marker_beam.visible = false

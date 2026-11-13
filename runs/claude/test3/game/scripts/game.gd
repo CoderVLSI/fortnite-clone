@@ -7,7 +7,7 @@ const BOT_COUNT := 49
 const BLIMP_HEIGHT := 150.0
 const BLIMP_SPEED := 20.0                # 1000 m in 50 s: right across the big island
 const BLIMP_TIME := 50.0
-const LOOT_SPOTS := 340
+const LOOT_SPOTS := 600                  # chests and ammo boxes included; the rest is floor loot
 const BOT_NAMES := ["Mako", "Juniper", "Flint", "Sable", "Quill", "Tansy", "Rook", "Indigo", "Bramble", "Pike", "Wren", "Cobalt",
 		"Marlow", "Saffron", "Onyx", "Fennel", "Harbor", "Lark", "Dune", "Ember", "Sorrel", "Vesper", "Gale", "Thistle",
 		"Aspen", "Basalt", "Cinder", "Delta", "Echo", "Fable", "Garnet", "Hollis", "Ivy", "Jasper", "Kestrel", "Linden",
@@ -274,7 +274,7 @@ func _setup_loot() -> void:
 	# floor loot spots: inside buildings first, then spread over the island
 	var spots: Array[Vector3] = []
 	for h in _named(island, "House_") + _named(island, "Farmhouse"):
-		for l in [Vector3(0.6, 0.3, 1.6), Vector3(-2.4, 0.3, 2.1), Vector3(-0.5, 3.35, 0.4)]:
+		for l in [Vector3(0.6, 0.3, 1.6), Vector3(-2.4, 0.3, 2.1), Vector3(-0.5, 3.35, 0.4), Vector3(1.8, 0.3, -1.2), Vector3(1.6, 3.35, -1.0)]:
 			spots.append(h.global_transform * l)
 	for w in _named(island, "Warehouse_"):
 		for l in [Vector3(-4.0, 0.3, 2.0), Vector3(4.0, 0.3, -2.0), Vector3(0.0, 0.3, 0.0), Vector3(-4.5, 0.3, -2.5)]:
@@ -299,8 +299,9 @@ func _setup_loot() -> void:
 	for s in spots:
 		var it := Items.roll_floor(rng)
 		spawn_pickup(it, s)
-		if it.has("id") and Items.def(it).kind == "weapon":       # a weapon comes with some ammo next to it
-			spawn_pickup({"ammo": Items.def(it).ammo}, s + Vector3(0.7, 0, 0.3))
+		if it.has("id") and Items.def(it).kind == "weapon":       # a weapon comes with a good pile of ammo next to it
+			var am: String = Items.def(it).ammo
+			spawn_pickup({"ammo": am, "count": int(Items.AMMO_PICKUP[am]) * 3}, s + Vector3(0.7, 0, 0.3))
 	stats["loot_spots"] = containers.size() + spots.size()
 	stats["containers"] = containers.size()
 
