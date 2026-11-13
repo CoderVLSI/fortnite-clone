@@ -225,6 +225,40 @@ func _run_host() -> void:
 	nm.test_send("chest", ci)
 	var co = await got("chest_open", 8.0)
 	check("(client) the chest the host opened is open there", co != null and int(co) == 1)
+	# Duos: two humans share a team; a knock is replicated, the host revives the client, the client revives the host
+	if game.duos:
+		check("both humans are on one team (Duos)", me.team == cl.team and game.partner_of(me) == cl, "%d/%d" % [me.team, cl.team])
+		nm.test_send("duo_team", [me.team, cl.team])
+		me.global_position = cl.global_position + Vector3(1.4, 0.0, 0.0)
+		me.state = Actor.State.GROUND
+		await wait(0.5)
+		cl.hit(500.0, me, false, me.global_position)          # a teammate hits: no friendly fire
+		check("no friendly fire between the two humans", cl.hp > 0.0 and not cl.knocked)
+		cl.hp = 5.0
+		cl.hit(60.0, game.actors[5], false, cl.global_position)
+		await wait(0.8)
+		check("the client is knocked on the host (a teammate is up)", cl.knocked and cl.alive())
+		var kc = await got("knocked_seen", 8.0)
+		check("(client) sees itself knocked", kc != null and int(kc) == 1)
+		var tcount := 0
+		var tk := Time.get_ticks_msec()
+		while cl.knocked and Time.get_ticks_msec() - tk < 12000 * (8 if slow else 1):
+			game.try_revive(me, true)
+			tcount += 1
+			await get_tree().physics_frame
+		check("the host revived the client (hold E)", not cl.knocked and cl.hp > 0.0, "hp=%.0f" % cl.hp)
+		var kr = await got("revived_seen", 8.0)
+		check("(client) sees itself revived", kr != null and int(kr) == 1)
+		me.hit(500.0, game.actors[6], false, me.global_position)
+		await wait(0.8)
+		check("the host is knocked", me.knocked)
+		nm.test_send("host_knocked", 1)
+		var hr := await until(func() -> bool: return not me.knocked, 14.0)
+		check("the client revived the host (held use key over the network)", hr and me.hp > 0.0)
+		nm.test_send("host_revived", 1)
+		cl.hp = 1.0
+		cl.hit(50.0, game.actors[5], false, cl.global_position)
+		cl.die(game.actors[5])
 	# storm and alive count
 	game.storm.start()
 	await wait(1.0)
@@ -236,7 +270,7 @@ func _run_host() -> void:
 	cl.hp = 1.0
 	cl.hit(50.0, killer, false, killer.global_position)
 	await wait(1.0)
-	check("the client is eliminated on the host", not cl.alive() and cl.placement >= 2, "placement=%d" % cl.placement)
+	check("the client is eliminated on the host", not cl.alive() and (cl.placement >= 2 or game.duos), "placement=%d" % cl.placement)
 	var eo = await got("elim_ok", 8.0)
 	check("(client) saw its elimination and placement", eo != null and int(eo) == 1)
 	# the match ends: every bot falls, the host is the last one standing
@@ -342,13 +376,31 @@ func _run_client() -> void:
 	await until(func() -> bool: return game.containers[int(ci)].opened, 4.0)
 	check("the chest the host opened is open here", game.containers[int(ci)].opened)
 	nm.test_send("chest_open", 1 if game.containers[int(ci)].opened else 0)
+	if game.duos:
+		var dt = await got("duo_team", 10.0)
+		check("(client) team replicated: both on one team", dt != null and int(dt[0]) == me.team and int(dt[1]) == me.team, "me=%d" % me.team)
+		await until(func() -> bool: return me.knocked, 12.0)
+		check("knocked (the host's decision reached the client)", me.knocked)
+		nm.test_send("knocked_seen", 1 if me.knocked else 0)
+		await until(func() -> bool: return not me.knocked, 14.0)
+		check("revived by the host", not me.knocked and me.hp > 0.0)
+		nm.test_send("revived_seen", 1 if not me.knocked else 0)
+		await got("host_knocked", 10.0)
+		await wait(0.5)
+		var rp := 0
+		var t0 := Time.get_ticks_msec()
+		while host_actor.knocked and Time.get_ticks_msec() - t0 < 14000 * (8 if slow else 1):
+			game.try_revive(me, true, null)               # reports the held use key; the host does the reviving
+			await get_tree().physics_frame
+		check("the host got revived by this client", not host_actor.knocked)
+		nm.test_send("host_revived", 1)
 	var st = await got("storm", 10.0)
 	await wait(0.5)
 	var same: bool = absf(game.storm.radius - float(st[0])) < 1.0 and bool(st[2]) == game.storm.active and game.alive_count() == int(st[1])
 	check("storm radius and alive count match the host", same, "r=%.1f/%.1f alive=%d/%d" % [game.storm.radius, float(st[0]), game.alive_count(), int(st[1])])
 	nm.test_send("storm_ok", 1 if same else 0)
 	await until(func() -> bool: return not me.alive(), 8.0)
-	var el: bool = not me.alive() and me.placement >= 2
+	var el: bool = not me.alive() and (me.placement >= 2 or game.duos)      # (a Duos team places when both are out)
 	check("eliminated, and sees its placement", el, "placement=%d" % me.placement)
 	nm.test_send("elim_ok", 1 if el else 0)
 	await until(func() -> bool: return game.over, 10.0)

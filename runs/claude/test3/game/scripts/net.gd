@@ -30,6 +30,7 @@ var last_message := ""                  # shown in the lobby after being dropped
 var autostart := false                  # --net-autostart: the host starts the match once the party has two players
 var autostart_t := 0.0
 var auto_join_ip := ""
+var force_mode := ""                    # --nettest-duos
 var _beacon: PacketPeerUDP
 var _beacon_t := 0.0
 var _listener: PacketPeerUDP
@@ -49,6 +50,8 @@ func _ready() -> void:
 			role = "pending_host"
 			if a == "--nettest-host":
 				autostart = true
+		elif a == "--nettest-duos":
+			force_mode = "duos"
 		elif a == "--net-autostart":
 			autostart = true
 		elif a == "--net-join" or a == "--nettest-client":
@@ -258,6 +261,8 @@ func start_match(mode := "") -> void:
 	if role != "host" or in_match:
 		return
 	var st := get_node_or_null("/root/Settings")
+	if force_mode != "":
+		mode = force_mode
 	if mode == "":
 		mode = String(st.get("mode")) if st and st.get("mode") != null else "solo"
 	var diff := "normal"
