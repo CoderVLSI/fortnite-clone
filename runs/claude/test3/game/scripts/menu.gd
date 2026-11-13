@@ -6,7 +6,7 @@
 extends Node3D
 
 const GAME_SCENE := "res://scenes/game.tscn"
-const SKIP_FLAGS := ["--demo", "--autotest", "--buildtest", "--movetest", "--eventtest", "--poses", "--crosshairs", "--soundtest", "--invtest", "--invshot", "--profile"]
+const SKIP_FLAGS := ["--demo", "--autotest", "--buildtest", "--movetest", "--eventtest", "--duotest", "--duos", "--poses", "--crosshairs", "--soundtest", "--invtest", "--invshot", "--profile"]
 const SKIP_PREFIXES := ["--shots=", "--summarytest="]
 const NEWS := ["Snowy mountains and a desert with mesas: the island is now 800 m across",
 	"50 players per match", "New guns: SMG, tactical shotgun, burst rifle, hunting rifle",

@@ -50,6 +50,7 @@ var buildtest := false
 var movetest := false
 var poses := false
 var eventtest := false
+var duotest := false
 var crosshairs := false
 # front end (menu / pause / summary)
 var player_damage := 0.0                 # damage the player has dealt, shown on the summary
@@ -83,6 +84,7 @@ func _ready() -> void:
 		if a == "--movetest": movetest = true
 		if a == "--poses": poses = true
 		if a == "--eventtest": eventtest = true
+		if a == "--duotest": duotest = true
 		if a == "--crosshairs": crosshairs = true
 		if a.begins_with("--summarytest="): summarytest = a.get_slice("=", 1)
 		if a == "--soundtest": soundtest = true
@@ -93,7 +95,7 @@ func _ready() -> void:
 			demo = true
 			Engine.max_physics_steps_per_frame = 90          # keep game time real even when frames are slow
 	var mode_v = settings_node.get("mode") if settings_node else null
-	duos = (mode_v == "duos" and not demo) or OS.get_cmdline_user_args().has("--duos")
+	duos = (mode_v == "duos" and not demo) or OS.get_cmdline_user_args().has("--duos") or OS.get_cmdline_user_args().has("--duotest")
 	rng.seed = seed_v
 	terrain = Terrain.new()
 	island = load("res://scenes/island.tscn").instantiate()
@@ -150,6 +152,10 @@ func _ready() -> void:
 		var et := preload("res://scripts/eventtest.gd").new()
 		add_child(et)
 		et.setup(self)
+	if duotest:
+		var dt := preload("res://scripts/duotest.gd").new()
+		add_child(dt)
+		dt.setup(self)
 	if poses:
 		var ps := preload("res://scripts/posesheet.gd").new()
 		add_child(ps)
