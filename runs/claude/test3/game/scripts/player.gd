@@ -13,6 +13,8 @@ var yaw := 0.0
 var pitch := -0.2
 var spectate: Actor
 var show_map := false
+var marker := Vector3.INF                 # a spot marked on the map (Vector3.INF = none): pin on the HUD, a beam in the world
+var marker_beam: MeshInstance3D
 var prompt := ""
 var prompt_target = null
 var zoom := 0.0
@@ -145,9 +147,15 @@ func close_talk() -> void:
 
 func on_player_eliminated(killer: Actor) -> void:
 	spectate = killer if killer != null and killer.alive() else _next_alive(null)
+	var mate: Actor = game.partner_of(a)
+	if mate != null and mate.alive():
+		spectate = mate                                # Duos: follow the teammate who is still in
 
 
 func _next_alive(after: Actor) -> Actor:
+	var mate: Actor = game.partner_of(a)
+	if mate != null and mate.alive():
+		return mate
 	var list: Array = game.actors
 	var start: int = list.find(after) if after != null else -1
 	for i in range(1, list.size() + 1):
@@ -171,6 +179,11 @@ func _unhandled_input(e: InputEvent) -> void:
 				game.pause_menu.open()                     # Esc pauses (was: toggle mouse capture)
 			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
 				game.cmd(a, "select", [e.physical_keycode - KEY_1])
+	elif e is InputEventMouseButton and e.pressed and show_map:
+		if e.button_index == MOUSE_BUTTON_LEFT:
+			map_tap(e.position)
+		elif e.button_index == MOUSE_BUTTON_RIGHT:
+			clear_marker()
 	elif e is InputEventMouseButton and e.pressed:
 		if inv_open():
 			pass                                       # the inventory owns the mouse
@@ -245,7 +258,7 @@ func _physics_process(delta: float) -> void:
 		if Input.is_action_just_pressed("drop_item"):
 			game.cmd(a, "drop", [a.active])
 		if Input.is_action_just_pressed("map"):
-			show_map = not show_map
+			toggle_map()
 		_interaction()
 	elif a.alive() and demo:
 		yaw = lerp_angle(yaw, a.aim_yaw, clampf(delta * 4.0, 0.0, 1.0))
@@ -257,7 +270,7 @@ func _physics_process(delta: float) -> void:
 	if not a.alive() and touch != null and touch.fire:
 		touch.fire = false
 		spectate = _next_alive(spectate)
-	if not a.alive() and (spectate == null or not spectate.alive()):
+	if not a.alive() and (spectate == null or not spectate.alive() or (game.partner_of(a) != null and game.partner_of(a).alive() and spectate != game.partner_of(a))):
 		spectate = _next_alive(spectate)
 
 
@@ -333,7 +346,7 @@ func _touch_input() -> void:
 	if touch.take("drop"):
 		game.cmd(a, "drop", [a.active])
 	if touch.take("map"):
-		show_map = not show_map
+		toggle_map()
 	touch_use = touch.take("use")
 	_interaction()
 	if not a.alive() and touch.fire:
@@ -393,6 +406,8 @@ func _key_hint() -> String:
 
 func _interaction() -> void:
 	## Prompts for the use key; what it does lives in game.interact() so a remote player gets the same behaviour.
+	if game.try_revive(a, Input.is_action_pressed("interact") or touch_use, self):
+		return                                         # Duos: hold E on a knocked teammate (LAN client: the host runs it, this reports the key)
 	if talking != null:
 		if a.state != Actor.State.GROUND or a.global_position.distance_to(talking.global_position) > 4.0 or _use_pressed() or Input.is_action_just_pressed("ui_cancel"):
 			close_talk()
@@ -416,6 +431,9 @@ func _process(delta: float) -> void:
 	var s := subject()
 	if s == null:
 		return
+	if marker_beam != null and marker_beam.visible:          # the beam fades as you get close, so it never blinds you
+		var md := Vector2(marker.x - s.global_position.x, marker.z - s.global_position.z).length()
+		(marker_beam.material_override as StandardMaterial3D).albedo_color.a = clampf(md / 160.0, 0.08, 0.45)
 	if not a.alive():
 		yaw = lerp_angle(yaw, s.aim_yaw, clampf(delta * 5.0, 0.0, 1.0))
 		pitch = lerpf(pitch, -0.18, clampf(delta * 3.0, 0.0, 1.0))
@@ -426,7 +444,7 @@ func _process(delta: float) -> void:
 	cam.fov = lerpf(75.0, 22.0 if scoped else 48.0, zoom) + 9.0 * s.tsprint_k * (1.0 - zoom)     # tactical sprint kicks the FOV out
 	var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch)
 	var back := 4.6
-	cam_up = lerpf(cam_up, 1.4 if (s.crouched or s.sliding) else 1.9, clampf(delta * 9.0, 0.0, 1.0))
+	cam_up = lerpf(cam_up, 1.0 if s.knocked else (1.4 if (s.crouched or s.sliding) else 1.9), clampf(delta * 9.0, 0.0, 1.0))
 	var up := cam_up
 	var side := 0.75
 	if s.state == Actor.State.BLIMP:
@@ -466,3 +484,56 @@ func aim_point() -> Vector3:
 	var dir := -cam.global_transform.basis.z
 	var res = game.ray(from + dir * 2.0, from + dir * 420.0, a)
 	return res.position if not res.is_empty() else from + dir * 420.0
+
+
+# ----------------------------------------------------------------------------- the map and its marker
+
+func toggle_map() -> void:
+	## The full map frees the mouse so a spot can be clicked; closing it gives the mouse back to the camera.
+	show_map = not show_map
+	if touch != null or demo:
+		return
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if show_map else Input.MOUSE_MODE_CAPTURED
+
+
+func map_tap(screen: Vector2) -> void:
+	## Click or tap on the full map: mark that spot, or clear the mark when the tap lands on it.
+	var hud = game.hud
+	if hud == null or not hud.fullmap_rect.has_point(screen):
+		return
+	var w: Vector2 = hud.map_screen_to_world(screen)
+	if marker != Vector3.INF and Vector2(marker.x, marker.z).distance_to(w) < 14.0:
+		clear_marker()
+		return
+	set_marker(w)
+
+
+func set_marker(w: Vector2) -> void:
+	marker = Vector3(w.x, game.terrain.height(w.x, w.y), w.y)
+	if marker_beam == null:
+		# a tall, thin, glowing column so the spot is easy to steer to from the blimp and while skydiving
+		marker_beam = MeshInstance3D.new()
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 1.5
+		cyl.bottom_radius = 1.5
+		cyl.height = 300.0
+		cyl.radial_segments = 10
+		cyl.rings = 1
+		marker_beam.mesh = cyl
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.albedo_color = Color(1.0, 0.82, 0.18, 0.45)
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		marker_beam.material_override = mat
+		marker_beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		game.add_child(marker_beam)
+	marker_beam.global_position = marker + Vector3(0, 150.0, 0)
+	marker_beam.visible = true
+	game.sfx("hit_marker", Vector3.INF)
+
+
+func clear_marker() -> void:
+	marker = Vector3.INF
+	if marker_beam != null:
+		marker_beam.visible = false

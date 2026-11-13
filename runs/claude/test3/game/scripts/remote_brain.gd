@@ -11,6 +11,7 @@ var last_edge := 0
 var last_jump := 0
 var last_crouch := 0
 var fire_held := false
+var use_held := false
 var pending_fire := false
 var have_input := false
 var refused := 0
@@ -58,6 +59,7 @@ func on_packet(b: PackedByteArray) -> void:
 	a.in_jump_held = fl & (1 << 9) != 0
 	a.in_dive = fl & (1 << 10) != 0
 	fire_held = fl & (1 << 6) != 0
+	use_held = fl & (1 << 11) != 0
 	if edge != last_edge:
 		last_edge = edge
 		pending_fire = true
@@ -100,12 +102,14 @@ func on_packet(b: PackedByteArray) -> void:
 	a.hurdle_t = -1.0 if hur == 255 else float(hur) / 250.0
 	a.mantle_dur = 1.0
 	a.mantle_t = -1.0 if man == 255 else float(man) / 250.0
-	a._set_height(Actor.CROUCH_H if (a.crouched or a.sliding) else Actor.STAND_H)
+	a._set_height(Actor.KNOCK_H if a.knocked else (Actor.CROUCH_H if (a.crouched or a.sliding) else Actor.STAND_H))
 
 
 func _physics_process(delta: float) -> void:
 	if a == null or not a.alive() or not have_input:
 		return
+	if game.duos:
+		game.try_revive(a, use_held)                        # Duos: the host runs the revive for this human, every tick, from their held use key
 	# the trigger
 	var it = a.item()
 	if game.warming_up() or a.state == Actor.State.BLIMP or a.state == Actor.State.DEAD:

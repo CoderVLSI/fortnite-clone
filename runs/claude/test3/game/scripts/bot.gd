@@ -60,6 +60,7 @@ var cover_until := 0.0                  # sheltering behind a wall it just built
 var harvest_e = null                    # the tree or rock it is gathering from
 var ally_of: Actor = null               # a hired character: fights for this player and follows them
 var rift_next := 0.0
+var buddy := false                      # Duos teammate brain: ally_of is the partner; follows, loots nearby, fights, revives (game.setup_duo)
 var shortcut = null                     # a rift or zip line end being walked to: {kind, pos, zip, end}
 var harvest_search := 0.0               # next time it may look for one (the search walks every tree and rock)
 # boss mode (a.is_boss, set up by bosses.gd): guards its lair, never loots, never goes to the storm
@@ -148,11 +149,17 @@ func _tick(delta: float) -> void:
 		a.in_fire = false
 		a.in_move = Vector2.ZERO
 		return
+	if a.knocked:
+		_knocked_tick()
+		return
+	var mate_ok: bool = buddy and ally_of != null and ally_of.alive()
 	match a.state:
 		Actor.State.BLIMP:
-			if game.match_time >= jump_at:
+			if (mate_ok and (ally_of.state != Actor.State.BLIMP or game.match_time >= game.BLIMP_TIME - 1.0)) or (not mate_ok and game.match_time >= jump_at):
 				a.in_jump = true
 		Actor.State.SKYDIVE, Actor.State.GLIDE:
+			if mate_ok:
+				drop_target = ally_of.global_position                  # land next to the partner
 			var to := drop_target - a.global_position
 			to.y = 0
 			var d := to.length()
@@ -162,6 +169,39 @@ func _tick(delta: float) -> void:
 			a.in_dive = a.state == Actor.State.SKYDIVE and d < 60.0
 		Actor.State.GROUND, Actor.State.SWIM:
 			_ground(delta)
+
+
+func _knocked_tick() -> void:
+	## Down: crawl slowly towards the partner if they are up, otherwise wait for a revive.
+	a.in_fire = false
+	a.in_move = Vector2.ZERO
+	var m: Actor = game.partner_of(a)
+	if m != null and m.up():
+		var to := m.global_position - a.global_position
+		to.y = 0
+		if to.length() > 2.5:
+			a.aim_yaw = atan2(-to.x, -to.z)
+			a.in_move = Vector2(0, 1)
+
+
+func _revive_tick(delta: float) -> bool:
+	## The partner is down: go to them and channel the revive (the actor cancels it if we are shot). True while doing so.
+	var o := ally_of
+	if o == null or not o.knocked or not o.alive() or game.match_time - a.last_hit_time < 1.5 or a.state != Actor.State.GROUND:
+		return false
+	mode = "revive"
+	var d := a.global_position.distance_to(o.global_position)
+	if d > 1.6:
+		a.revive_t = 0.0
+		_set_goal(o.global_position)
+		_follow(delta)
+		return true
+	var to := o.global_position - a.global_position
+	a.aim_yaw = atan2(-to.x, -to.z)
+	a.in_move = Vector2.ZERO
+	a.in_sprint = false
+	game.try_revive(a, true)
+	return true
 
 
 func _ground(delta: float) -> void:
@@ -181,6 +221,8 @@ func _ground(delta: float) -> void:
 	if a.emote != "" and a.emote_t < 3.0 and not (target != null and target.alive() and game.match_time - target_seen < 0.5):
 		return                                     # finish the celebration unless someone shows up
 	a.stop_emote()
+	if buddy and _revive_tick(delta):
+		return
 	if mode == "fight" and target != null and target.alive():
 		_fight(delta)
 		return
@@ -198,6 +240,8 @@ func _ground(delta: float) -> void:
 
 func _perceive() -> void:
 	var best: Actor = null
+	var best_k: Actor = null
+	var bdk := 1e9
 	var bd: float = L.sight
 	if (mode == "loot" or mode == "harvest") and game.match_time - a.last_hit_time > 4.0:
 		bd *= 0.5                                      # heads down, looting
@@ -208,19 +252,25 @@ func _perceive() -> void:
 	if game.bosses != null:
 		pool = pool + game.bosses.alive_actors()               # and so are the bosses (see _engages: most bots keep clear)
 	for o in pool:
-		if o == a or o == ally_of or not o.alive() or o.state == Actor.State.BLIMP or o.state == Actor.State.SKYDIVE:
+		if o == a or o == ally_of or game.same_team(a, o) or not o.alive() or o.state == Actor.State.BLIMP or o.state == Actor.State.SKYDIVE:
 			continue
 		var to: Vector3 = o.global_position - a.global_position
 		var d := to.length()
-		if d > bd:
+		if d > (bd if not o.knocked else minf(bd, bdk)):
 			continue
 		var heard = o == a.last_attacker and game.match_time - a.last_hit_time < 3.0
 		if d > 14.0 and not heard and fwd.dot(to.normalized()) < 0.15:
 			continue                                              # outside the field of view
 		if not game.can_see(a.eye(), o.eye()):
 			continue
+		if o.knocked:                                              # finishing a knocked enemy only matters if nobody else is a threat
+			bdk = d
+			best_k = o
+			continue
 		bd = d
 		best = o
+	if best == null:
+		best = best_k
 	if best != null:
 		if best != target:
 			first_seen = game.match_time
@@ -306,6 +356,9 @@ func _decide() -> void:
 	var out_now := s.outside(pos)
 	var out_next := s.outside_next(pos)
 	var armed := a.has_weapon()
+	if buddy and (ally_of == null or not ally_of.alive()):
+		buddy = false                                      # the partner is gone: play on as a normal bot
+		ally_of = null
 	goal_container = null
 	# stranded on a roof or platform: walk off it
 	if pos.y - maxf(game.terrain.height(pos.x, pos.z), 0.0) > 2.4 and a.is_on_floor():
@@ -386,8 +439,9 @@ func _decide() -> void:
 		return
 	# hired: stay with the player instead of looting or hunting
 	if ally_of != null:
-		_follow_owner(pos)
-		return
+		if not buddy or ally_of.state != Actor.State.GROUND or pos.distance_to(ally_of.global_position) > 30.0:
+			_follow_owner(pos)
+			return
 	# 3b. a boss's keycard in the pocket and its vault not far: go and open it
 	var vk = _vault_goal(pos)
 	if vk != null:
@@ -416,10 +470,13 @@ func _decide() -> void:
 		return
 	goal_is_pickup = false
 	var c = game.nearest_container(pos, 110.0 if not armed else (50.0 if not low.is_empty() else 30.0))
-	if c != null and _storm_allows(c.pos) and not _avoided(c.pos):
+	if c != null and _storm_allows(c.pos) and not _avoided(c.pos) and not (buddy and c.pos.distance_to(ally_of.global_position) > 30.0):
 		mode = "loot"
 		goal_container = c
 		_set_goal(c.pos)
+		return
+	if buddy:                                              # nothing to loot close by: stay with the partner
+		_follow_owner(pos)
 		return
 	# 4b. spare gold and a bench in reach: upgrade the best gun
 	if armed and not s.shrinking:
@@ -478,6 +535,8 @@ func _wanted_pickup(max_d: float, armed: bool, low: Array) -> Variant:
 		var d := a.global_position.distance_squared_to(p.pos)
 		if d > lim or junk.has(p.item) or not _worth(p.item) or _avoided(p.pos) or not _reachable(p.pos):
 			continue
+		if buddy and p.pos.distance_to(ally_of.global_position) > 20.0:
+			continue                                   # a teammate only loots near the partner
 		if p.pos.y - game.terrain.height(p.pos.x, p.pos.z) > 1.6 or not _storm_allows(p.pos):
 			continue
 		var it: Dictionary = p.item
@@ -611,7 +670,7 @@ func _nearest_enemy() -> Actor:
 	var best: Actor = null
 	var bd := 1e9
 	for o in game.actors:
-		if o != a and o.alive() and (o.state == Actor.State.GROUND or o.state == Actor.State.SWIM):
+		if o != a and o.alive() and not o.knocked and not game.same_team(a, o) and (o.state == Actor.State.GROUND or o.state == Actor.State.SWIM):
 			var d := a.global_position.distance_squared_to(o.global_position)
 			if d < bd:
 				bd = d
@@ -1052,8 +1111,8 @@ func _best_mat(pieces := 1) -> String:
 
 
 func _place(piece: String, yaw: float, pitch := 0.0) -> bool:
-	## Build one piece the way the player does: the same target rules, facing `yaw`.
-	if a.state != Actor.State.GROUND or game.match_time < build_next:
+	## Build one piece the way the player does: the same target rules, facing `yaw`. Bosses never build.
+	if a.is_boss or a.state != Actor.State.GROUND or game.match_time < build_next:
 		return false
 	var m := _best_mat()
 	if m == "":

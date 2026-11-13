@@ -7,7 +7,7 @@ const BOT_COUNT := 49
 const BLIMP_HEIGHT := 150.0
 const BLIMP_SPEED := 20.0                # 1000 m in 50 s: right across the big island
 const BLIMP_TIME := 50.0
-const LOOT_SPOTS := 340
+const LOOT_SPOTS := 600                  # chests and ammo boxes included; the rest is floor loot
 const BOT_NAMES := ["Mako", "Juniper", "Flint", "Sable", "Quill", "Tansy", "Rook", "Indigo", "Bramble", "Pike", "Wren", "Cobalt",
 		"Marlow", "Saffron", "Onyx", "Fennel", "Harbor", "Lark", "Dune", "Ember", "Sorrel", "Vesper", "Gale", "Thistle",
 		"Aspen", "Basalt", "Cinder", "Delta", "Echo", "Fable", "Garnet", "Hollis", "Ivy", "Jasper", "Kestrel", "Linden",
@@ -50,6 +50,7 @@ var buildtest := false
 var movetest := false
 var poses := false
 var eventtest := false
+var duotest := false
 var crosshairs := false
 # front end (menu / pause / summary)
 var player_damage := 0.0                 # damage the player has dealt, shown on the summary
@@ -63,6 +64,8 @@ var audio: GameAudio
 var profile := false                     # --profile: print frame-time monitors every 10 s
 const WARMUP := 20.0                     # the warm-up before the blimp: everyone on the island, nothing counts yet
 var warmup_left := 0.0
+var duos := false                        # Duos: teams of two (Settings.mode, or --duos); see setup_duo()
+var duo_teams: Array = []                # each entry [Actor, Actor]
 var difficulty := "normal"               # bot difficulty: easy / normal / sweaty (Settings, or --difficulty=)
 # LAN multiplayer (net.gd / net_match.gd). All false and unused in a single-player match.
 var net_active := false                  # a network session is running this match
@@ -99,6 +102,7 @@ func _ready() -> void:
 		if a == "--movetest": movetest = true
 		if a == "--poses": poses = true
 		if a == "--eventtest": eventtest = true
+		if a == "--duotest": duotest = true
 		if a == "--crosshairs": crosshairs = true
 		if a.begins_with("--summarytest="): summarytest = a.get_slice("=", 1)
 		if a == "--soundtest": soundtest = true
@@ -113,6 +117,10 @@ func _ready() -> void:
 		if a.begins_with("--net-warmup="): warmup_len = float(a.get_slice("=", 1))
 	if net_active:
 		difficulty = String(netsvc.match_info.get("difficulty", difficulty))
+	var mode_v = settings_node.get("mode") if settings_node else null
+	duos = (mode_v == "duos" and not demo) or OS.get_cmdline_user_args().has("--duos") or OS.get_cmdline_user_args().has("--duotest")
+	if net_active:
+		duos = String(netsvc.match_info.get("mode", "solo")) == "duos"           # the host's choice, on every device
 	rng.seed = seed_v
 	terrain = Terrain.new()
 	island = load("res://scenes/island.tscn").instantiate()
@@ -173,6 +181,10 @@ func _ready() -> void:
 		var et := preload("res://scripts/eventtest.gd").new()
 		add_child(et)
 		et.setup(self)
+	if duotest:
+		var dt := preload("res://scripts/duotest.gd").new()
+		add_child(dt)
+		dt.setup(self)
 	if poses:
 		var ps := preload("res://scripts/posesheet.gd").new()
 		add_child(ps)
@@ -301,7 +313,7 @@ func _setup_loot() -> void:
 	# floor loot spots: inside buildings first, then spread over the island
 	var spots: Array[Vector3] = []
 	for h in _named(island, "House_") + _named(island, "Farmhouse"):
-		for l in [Vector3(0.6, 0.3, 1.6), Vector3(-2.4, 0.3, 2.1), Vector3(-0.5, 3.35, 0.4)]:
+		for l in [Vector3(0.6, 0.3, 1.6), Vector3(-2.4, 0.3, 2.1), Vector3(-0.5, 3.35, 0.4), Vector3(1.8, 0.3, -1.2), Vector3(1.6, 3.35, -1.0)]:
 			spots.append(h.global_transform * l)
 	for w in _named(island, "Warehouse_"):
 		for l in [Vector3(-4.0, 0.3, 2.0), Vector3(4.0, 0.3, -2.0), Vector3(0.0, 0.3, 0.0), Vector3(-4.5, 0.3, -2.5)]:
@@ -326,8 +338,9 @@ func _setup_loot() -> void:
 	for s in spots:
 		var it := Items.roll_floor(rng)
 		spawn_pickup(it, s)
-		if it.has("id") and Items.def(it).kind == "weapon":       # a weapon comes with some ammo next to it
-			spawn_pickup({"ammo": Items.def(it).ammo}, s + Vector3(0.7, 0, 0.3))
+		if it.has("id") and Items.def(it).kind == "weapon":       # a weapon comes with a good pile of ammo next to it
+			var am: String = Items.def(it).ammo
+			spawn_pickup({"ammo": am, "count": int(Items.AMMO_PICKUP[am]) * 3}, s + Vector3(0.7, 0, 0.3))
 	stats["loot_spots"] = containers.size() + spots.size()
 	stats["containers"] = containers.size()
 
@@ -480,6 +493,11 @@ func _setup_actors() -> void:
 	controller = preload("res://scripts/player.gd").new()
 	add_child(controller)
 	controller.setup(self, player, demo)
+	if duos and humans.size() >= 2:
+		for k in range(0, humans.size() - 1, 2):       # a LAN party: the humans pair up (no bot fill), the same on every device
+			setup_duo(humans[k], humans[k + 1])
+	elif duos:
+		setup_duo(player, actors[humans.size()] if net_active else actors[1])     # queued alone: a bot from the field is the teammate
 	_setup_npcs()
 	bosses = Bosses.new()
 	add_child(bosses)
@@ -606,8 +624,6 @@ func interact(a: Actor, dry := false) -> Dictionary:
 		if r.kind != "talk":
 			cmd(a, "interact")
 		return r
-	if has_method("try_revive") and call("try_revive", a):       # the Duos agent: hold E over a downed teammate
-		return {"kind": "revive", "label": "", "usable": true, "target": null}
 	if not r.usable:
 		return r
 	match r.kind:
@@ -776,6 +792,137 @@ func _process(_d: float) -> void:
 			get_tree().quit()
 
 
+# ----------------------------------------------------------------------------- teams (Duos)
+
+func same_team(a: Actor, b: Actor) -> bool:
+	return a != null and b != null and a.team == b.team
+
+
+func partner_of(a: Actor) -> Actor:
+	## The other member of a's duo, or null.
+	for t in duo_teams:
+		if t[0] == a:
+			return t[1]
+		if t[1] == a:
+			return t[0]
+	return null
+
+
+func setup_duo(a1: Actor, a2: Actor) -> void:
+	## Put two actors on one team. A bot a2 gets the teammate brain (follow, loot, fight, revive) around a1.
+	a2.team = a1.team
+	duo_teams.append([a1, a2])
+	duos = true
+	for c in a2.get_children():
+		if c.get("buddy") != null:
+			c.ally_of = a1
+			c.buddy = true
+			c.mode = "follow"
+
+
+func can_knock(a: Actor) -> bool:
+	## Knocked instead of eliminated: only when a teammate is still up.
+	var m := partner_of(a)
+	return m != null and m.up() and not a.is_boss and not a.is_npc
+
+
+func on_knocked(victim: Actor, attacker: Actor) -> void:
+	var by: Actor = attacker if attacker != null and attacker != victim else null
+	var verb := "were" if victim == player else "was"
+	kill_feed.append({"text": ("%s %s knocked by %s" % [victim.display_name, verb, by.display_name]) if by else ("%s %s knocked" % [victim.display_name, verb]),
+			"time": match_time, "mine": by == player or same_team(victim, player)})
+	if kill_feed.size() > 6:
+		kill_feed.pop_front()
+	if nm and net_host:
+		nm.ev("feed", ["%s was knocked%s" % [victim.display_name, (" by " + by.display_name) if by else ""], actors.find(by), actors.find(victim)])
+
+
+func _client_revive(a: Actor, held: bool, ctrl: Node) -> bool:
+	## LAN client: only the prompt, and what the use key reports to the host (which runs the revive itself, every tick).
+	if a.knocked:
+		a.net_use_held = false
+		return true
+	var m := partner_of(a)
+	if m == null or not m.knocked or not a.up() or a.state != Actor.State.GROUND or a.global_position.distance_to(m.global_position) > Actor.REVIVE_RANGE:
+		a.net_use_held = false
+		return false
+	if ctrl != null:
+		ctrl.prompt = "%s Revive %s" % [ctrl._key_hint(), m.display_name]
+	var grace := float(a.get_meta("net_use_grace", 0.0))
+	if ctrl != null and ctrl.touch != null and held:
+		grace = 0.4
+	elif not held and grace > 0.0:
+		held = true
+	a.set_meta("net_use_grace", maxf(grace - get_physics_process_delta_time(), 0.0))
+	a.net_use_held = held
+	return true
+
+
+func try_revive(a: Actor, held := true, ctrl: Node = null) -> bool:
+	## Start or continue reviving the nearest knocked teammate (call every physics tick while the revive key is held).
+	## Returns true when the interact key is consumed: reviving, a knocked teammate in reach, or `a` itself knocked.
+	if net_client:
+		return _client_revive(a, held, ctrl)
+	if a.knocked:
+		a.revive_t = 0.0
+		a.revive_target = null
+		return true
+	var m := partner_of(a)
+	var delta := get_physics_process_delta_time()
+	if m == null or not m.knocked or not a.up() or a.state != Actor.State.GROUND or a.global_position.distance_to(m.global_position) > Actor.REVIVE_RANGE:
+		a.revive_t = 0.0
+		a.revive_target = null
+		return false
+	if ctrl != null:
+		ctrl.prompt = "%s Revive %s" % [ctrl._key_hint(), m.display_name]
+	var grace := float(a.get_meta("revive_grace", 0.0))
+	if ctrl != null and ctrl.touch != null and held:
+		grace = 0.4
+	elif not held and grace > 0.0:
+		held = true
+	a.set_meta("revive_grace", maxf(grace - delta, 0.0))
+	if not held:
+		a.revive_t = 0.0
+		a.revive_target = null
+		return false
+	if a.revive_target != m:
+		a.revive_t = 0.0
+	a.revive_target = m
+	a.revive_t += delta
+	m.revived_at = match_time
+	if a.revive_t >= Actor.REVIVE_TIME:
+		a.revive_t = 0.0
+		a.revive_target = null
+		m.revive()
+		kill_feed.append({"text": "%s revived %s" % [a.display_name, m.display_name], "time": match_time, "mine": same_team(a, player)})
+		if nm and net_host:
+			nm.ev("feed", ["%s revived %s" % [a.display_name, m.display_name], actors.find(a), actors.find(m)])
+		sfx("use_heal", m.global_position)
+	return true
+
+
+func teams_alive() -> int:
+	var seen := {}
+	for a in actors:
+		if a.alive():
+			seen[a.team] = true
+	return seen.size()
+
+
+func _team_has_up(team: int) -> bool:
+	for a in actors:
+		if a.team == team and a.up():
+			return true
+	return false
+
+
+func _team_has_alive(team: int) -> bool:
+	for a in actors:
+		if a.team == team and a.alive():
+			return true
+	return false
+
+
 func alive_count() -> int:
 	var n := 0
 	for a in actors:
@@ -805,18 +952,21 @@ func _check_win() -> void:
 				print("  BOT %s pos=(%.0f,%.1f,%.0f) goal=(%.0f,%.1f,%.0f) has_goal=%s path=%d i=%d vel=%.1f floor=%s mode=%s" % [a.display_name, a.global_position.x, a.global_position.y,
 						a.global_position.z, br.goal.x, br.goal.y, br.goal.z, br.has_goal, br.path.size(), br.path_i, a.velocity.length(), a.is_on_floor(), br.mode])
 		print("T=%d alive=%d landed=%d armed=%d pickups_left=%d modes=%s storm r=%.0f" % [int(match_time), n, landed, armed, pickups.size(), modes, storm.radius])
-	if n <= 1:
+	if teams_alive() <= 1:
 		over = true
 		over_time = match_time
-		if player.alive():
-			player_survived = match_time
-			sfx("victory", Vector3.INF)
-			player.placement = 1
-			_record_career()
 		for a in actors:
 			if a.alive():
 				winner = a
-				a.placement = 1
+		if winner != null:
+			for a in actors:
+				if a.team == winner.team:
+					a.placement = 1
+		if player.alive():
+			player_survived = match_time
+		if player.placement == 1:
+			sfx("victory", Vector3.INF)
+			_record_career()
 		var armed_ever := 0
 		for a in actors:
 			armed_ever += 1 if a.ever_armed else 0
@@ -922,11 +1072,15 @@ func on_eliminated(victim: Actor, killer: Actor) -> void:
 			hired = null
 		kill_feed.append({"text": "%s has fallen" % victim.display_name, "time": match_time, "mine": true})
 		return
-	victim.placement = alive_count() + 1
+	if not _team_has_alive(victim.team):                 # the whole team is out: they all place behind the teams still in
+		for m in actors:
+			if m.team == victim.team:
+				m.placement = teams_alive() + 1
 	if nm and net_host:
 		nm.on_eliminated(victim, killer)
 	if victim == player:
 		player_survived = match_time
+	if player.placement > 0:
 		_record_career()
 	var cause := "killed" if (killer != null and killer != victim) else ("storm" if storm.outside(victim.global_position) > 0.0 else "other")
 	stats["deaths_" + cause] = stats.get("deaths_" + cause, 0) + 1
@@ -950,6 +1104,10 @@ func on_eliminated(victim: Actor, killer: Actor) -> void:
 		sfx("elimination", Vector3.INF)
 	elif nm and killer != null and killer.peer_id > 1 and victim != killer:
 		nm.ev_to(killer.peer_id, "ui_sfx", ["elimination"])
+	# a knocked teammate with nobody left up goes down with them
+	for m in actors:
+		if m != victim and m.team == victim.team and m.knocked and not _team_has_up(victim.team):
+			m.die(killer)
 	if victim == player:
 		controller.on_player_eliminated(killer)
 	elif killer != null and killer != player and killer.alive() and rng.randf() < 0.35:
@@ -1085,7 +1243,7 @@ func _update_pickups(delta: float) -> void:
 	if pick_tick % 6 != 0 or net_client:
 		return
 	for a in actors:
-		if not a.alive() or a.state != Actor.State.GROUND:
+		if not a.alive() or a.knocked or a.state != Actor.State.GROUND:
 			continue
 		for p in pickups.duplicate():
 			if match_time - p.born < 0.6 or a.global_position.distance_squared_to(p.pos) > 2.9:
@@ -1229,7 +1387,7 @@ func explode(pos: Vector3, pr: Dictionary) -> void:
 		if not a.alive() or a.state == Actor.State.BLIMP:
 			continue
 		var d := (a.global_position + Vector3(0, 0.9, 0)).distance_to(pos)
-		if d < pr.radius and can_see(pos + Vector3(0, 0.3, 0), a.eye()):
+		if d < pr.radius and (a == pr.owner or not same_team(a, pr.owner)) and can_see(pos + Vector3(0, 0.3, 0), a.eye()):
 			var dmg: float = pr.damage * clampf(1.15 - d / pr.radius, 0.2, 1.0) * (0.5 if a == pr.owner else 1.0)
 			a.hit(dmg, pr.owner, false, pos)
 			on_damage_dealt(pr.owner, a, dmg, a.eye())
@@ -1361,7 +1519,7 @@ func shock_burst(pos: Vector3, pr: Dictionary) -> void:
 			continue
 		var c := a.global_position + Vector3(0, 0.9, 0)
 		var d := c.distance_to(pos)
-		if d >= radius or not can_see(pos + Vector3(0, 0.4, 0), a.eye()):
+		if d >= radius or (a != pr.owner and same_team(a, pr.owner)) or not can_see(pos + Vector3(0, 0.4, 0), a.eye()):
 			continue
 		var fall := clampf(1.15 - d / radius, 0.45, 1.0)
 		if a != pr.owner:

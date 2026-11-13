@@ -51,10 +51,6 @@ func setup(g: Node) -> void:
 				game.actors[i].add_child(br)
 				br.setup(game, game.actors[i], int(plist[i].peer_id))
 				brains[int(plist[i].peer_id)] = br
-		if game.mode_duos():
-			var humans: Array = game.humans
-			if humans.size() == 2 and game.has_method("setup_duo"):
-				game.setup_duo(humans[0], humans[1])
 	else:
 		for a in all:
 			if a != game.player:
@@ -228,6 +224,7 @@ func _pack_actor(s: StreamPeerBuffer, a: Actor) -> void:
 	fl |= 64 if a.reloading > 0.0 else 0
 	fl |= 128 if a.using > 0.0 else 0
 	fl |= 256 if a.in_dive else 0
+	fl |= 512 if a.knocked else 0                       # Duos
 	s.put_u16(fl)
 	s.put_u8(int(clampf(a.tsprint_k, 0.0, 1.0) * 255.0))
 	s.put_u8(NONE_U8 if a.hurdle_t < 0.0 else int(clampf(a.hurdle_t / maxf(a.hurdle_dur, 0.01), 0.0, 1.0) * 250.0))
@@ -250,6 +247,11 @@ func _pack_actor(s: StreamPeerBuffer, a: Actor) -> void:
 	s.put_u8(clampi(int(a.reloading * 40.0), 0, 255))
 	s.put_u8(clampi(int(a.reload_total * 40.0), 0, 255))
 	s.put_u8(clampi(int(a.using * 40.0), 0, 255))
+	s.put_u16(clampi(a.team, 0, 65000))                 # Duos: team, knock hp, revive progress and who is being revived
+	s.put_u8(clampi(int(ceil(a.knock_hp)), 0, 100))
+	s.put_u8(clampi(int(a.revive_t * 50.0), 0, 250))
+	var rt: int = all.find(a.revive_target) if a.revive_target != null else -1
+	s.put_u8(NONE_U8 if rt < 0 or rt >= NONE_U8 else rt)
 
 
 func _unpack_actor(s: StreamPeerBuffer) -> Dictionary:
@@ -274,6 +276,11 @@ func _unpack_actor(s: StreamPeerBuffer) -> Dictionary:
 	e["rl"] = float(s.get_u8()) / 40.0
 	e["rtot"] = float(s.get_u8()) / 40.0
 	e["us"] = float(s.get_u8()) / 40.0
+	e["team"] = s.get_u16()
+	e["khp"] = float(s.get_u8())
+	e["rvt"] = float(s.get_u8()) / 50.0
+	var rti := s.get_u8()
+	e["rvi"] = -1 if rti == NONE_U8 else rti
 	return e
 
 
@@ -339,6 +346,11 @@ func _apply_puppet(a: Actor, e: Dictionary, pos: Vector3, yaw: float, pitch: flo
 	a.mantle_t = e.man
 	a.hp = float(e.hp)
 	a.shield = float(e.sh)
+	a.team = e.team
+	a.net_set_knocked(fl & 512 != 0)
+	a.knock_hp = e.khp
+	a.revive_t = e.rvt
+	a.revive_target = _actor_at(e.rvi) if e.rvi >= 0 else null
 	a.reloading = e.rl
 	a.reload_total = maxf(e.rtot, 0.1)
 	a.using = e.us
@@ -386,6 +398,7 @@ func _pack_input(a: Actor) -> PackedByteArray:
 	fl |= 256 if a.in_tsprint else 0
 	fl |= 512 if a.in_jump_held else 0
 	fl |= 1024 if a.in_dive else 0
+	fl |= 2048 if a.net_use_held else 0                 # the use key (hold E to revive a teammate)
 	s.put_u16(fl)
 	s.put_u8(int(clampf(a.tsprint_k, 0.0, 1.0) * 255.0))
 	s.put_u8(NONE_U8 if a.hurdle_t < 0.0 else int(clampf(a.hurdle_t / maxf(a.hurdle_dur, 0.01), 0.0, 1.0) * 250.0))
@@ -439,7 +452,7 @@ func _r_cmd(cname: String, args: Array) -> void:
 func _send_priv(a: Actor) -> void:
 	var d := {"sl": a.slots, "ac": a.active, "am": a.ammo, "mt": a.mats, "gd": a.gold, "hp": a.hp, "sh": a.shield, "rl": a.reloading,
 			"rt": a.reload_total, "us": a.using, "ut": a.use_total, "usl": a.use_slot, "bp": a.build_piece, "bm": a.build_mat, "fc": a.fire_cd,
-			"bl": a.bloom, "k": a.kills, "pl": a.placement, "em": a.emote, "dead": not a.alive(), "ch": a.charge, "gl": game.hired != null}
+			"bl": a.bloom, "kn": a.knocked, "khp": a.knock_hp, "rvt": a.revive_t, "team": a.team, "k": a.kills, "pl": a.placement, "em": a.emote, "dead": not a.alive(), "ch": a.charge, "gl": game.hired != null}
 	rpc_id(a.peer_id, "_r_priv", d)
 
 
@@ -467,6 +480,10 @@ func _r_priv(d: Dictionary) -> void:
 	a.kills = d.k
 	a.placement = d.pl
 	a.charge = d.ch
+	a.team = d.team
+	a.net_set_knocked(d.kn)
+	a.knock_hp = d.khp
+	a.revive_t = d.rvt
 	if d.em != a.emote:
 		if d.em == "":
 			a.stop_emote()
@@ -529,7 +546,8 @@ func _handle(ename: String, a: Array) -> void:
 			game.announce_text = a[0]
 			game.announce_time = game.match_time
 		"feed":
-			game.kill_feed.append({"text": a[0], "time": game.match_time, "mine": int(a[1]) == game.my_idx or int(a[2]) == game.my_idx})
+			var va := _actor_at(int(a[2]))
+			game.kill_feed.append({"text": a[0], "time": game.match_time, "mine": int(a[1]) == game.my_idx or int(a[2]) == game.my_idx or (va != null and game.same_team(va, game.player))})
 			if game.kill_feed.size() > 6:
 				game.kill_feed.pop_front()
 		"dmg":

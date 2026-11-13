@@ -48,6 +48,7 @@ var outfit := 0                          # index into OUTFITS, picked in the lob
 var career := {"matches": 0, "wins": 0, "kills": 0, "top10": 0, "best": 0, "xp": 0}
 var skip_warmup := false                 # not saved: the front-end test sets it to go straight to the blimp
 var bot_difficulty := "normal"           # one of DIFFICULTIES; --difficulty=<value> overrides it for a run without saving
+var mode := "solo"                       # "solo" or "duos" (the lobby's mode card; game.gd also reads --duos)
 var bindings := {}                       # action -> {"k": physical keycode} or {"m": mouse button}
 var defaults := {}                       # action -> Array[InputEvent], captured from project.godot
 var _sun: DirectionalLight3D
@@ -93,6 +94,8 @@ func load_file() -> void:
 	var d := str(cf.get_value("gameplay", "bot_difficulty", "normal"))
 	bot_difficulty = d if d in DIFFICULTIES else "normal"
 	_saved_difficulty = bot_difficulty
+	var md := str(cf.get_value("gameplay", "mode", "solo"))
+	mode = md if md in ["solo", "duos"] else "solo"
 	sensitivity = clampf(float(cf.get_value("controls", "sensitivity", 1.0)), 0.1, 4.0)
 	invert_y = bool(cf.get_value("controls", "invert_y", false))
 	fullscreen = bool(cf.get_value("graphics", "fullscreen", false))
@@ -141,6 +144,7 @@ func save_file() -> void:
 		_saved_difficulty = bot_difficulty
 		_cli_difficulty = ""
 		cf.set_value("gameplay", "bot_difficulty", bot_difficulty)
+	cf.set_value("gameplay", "mode", mode)
 	cf.save(PATH)
 
 

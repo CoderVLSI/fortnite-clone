@@ -25,6 +25,14 @@ const SWIM_OUT := 1.0                    # shallower than this with ground under
 const FLOAT_DEPTH := 1.25                # feet this far under the surface while swimming
 const MANTLE_MIN := 0.75
 const MANTLE_MAX := 2.3
+const KNOCK_HP := 100.0                  # Duos: a knocked actor has this much "knocked hp", which bleeds out over BLEED_TIME
+const BLEED_TIME := 30.0
+const CRAWL_SPEED := 1.6
+const KNOCK_H := 0.8                     # collision height while crawling
+const REVIVE_TIME := 5.0                 # seconds a teammate holds revive within REVIVE_RANGE
+const REVIVE_RANGE := 2.2
+const REVIVE_HP := 30.0
+static var _team_seq := 0
 
 var game: Node
 var display_name := "Player"
@@ -41,6 +49,12 @@ var spread_mul := 1.0                    # bots: aim error on top of the weapon 
 var placement := 0
 var is_npc := false                     # a character for hire, not a player
 var hired := false
+var team := -1                          # actors on the same team never hurt each other; everyone gets their own by default
+var knocked := false                    # Duos: down but not out. hp is 0 and knock_hp bleeds away; a teammate can revive
+var knock_hp := 0.0
+var revive_t := 0.0                     # seconds this actor has spent reviving their (nearest knocked) teammate, 0..REVIVE_TIME
+var revive_target: Actor                # who is being revived by this actor right now
+var revived_at := -99.0                 # match time of the last revive tick on this (knocked) actor: the bleed pauses
 var is_boss := false                    # a boss guarding a lair (bosses.gd): not a player, no placement
 var ever_armed := false
 var mats := {"wood": 0, "brick": 0, "metal": 0}
@@ -109,11 +123,14 @@ var net_aim := Vector3.INF               # remote_sim: the point under the clien
 var net_fire_edge := 0                   # client counts trigger pulls so the host can fire semi-auto guns once per click
 var net_damage := 0.0                    # damage a remote human has dealt (their summary)
 var net_held := ""                       # puppet: the item id in hand, to skip rebuilding the model
+var net_use_held := false               # client: the use key is held (reported to the host: hold E to revive)
 var net_build_fire := false              # client: the trigger is held while building (in_fire is off then)
 
 
 func setup(g: Node, nm: String, player: bool, outfit: Color, accent: Color, body_id := "Soldier") -> void:
 	game = g
+	team = _team_seq
+	_team_seq += 1
 	display_name = nm
 	is_player = player
 	collision_layer = 2
@@ -138,18 +155,23 @@ func alive() -> bool:
 	return state != State.DEAD
 
 
+func up() -> bool:
+	## Alive and not knocked: can fight, and can revive a teammate.
+	return state != State.DEAD and not knocked
+
+
 func is_head_point(p: Vector3) -> bool:
 	## True when a point on this actor (a hit or what the crosshair is on) is on the head.
 	return p.y > eye().y - 0.12
 
 
 func eye() -> Vector3:
-	return global_position + Vector3(0, 1.05 if (crouched or sliding) else EYE.y, 0)
+	return global_position + Vector3(0, 0.5 if knocked else (1.05 if (crouched or sliding) else EYE.y), 0)
 
 
 func centre() -> Vector3:
 	## Where to aim at this actor's body.
-	return global_position + Vector3(0, 0.62 if (crouched or sliding) else 1.15, 0)
+	return global_position + Vector3(0, 0.4 if knocked else (0.62 if (crouched or sliding) else 1.15), 0)
 
 
 func aim_dir() -> Vector3:
@@ -177,6 +199,17 @@ func _physics_process(delta: float) -> void:
 
 
 func _tick(delta: float) -> void:
+	if knocked:
+		in_fire = false
+		in_jump = false
+		in_crouch = false
+		in_sprint = false
+		in_tsprint = false
+		if not game.over and not game.net_client and game.match_time - revived_at > 0.25:         # (the host owns the bleed) the bleed pauses while a teammate revives
+			knock_hp -= delta * KNOCK_HP / BLEED_TIME
+			if knock_hp <= 0.0:
+				die(last_attacker)
+				return
 	fire_cd = maxf(fire_cd - delta, 0.0)
 	bloom = move_toward(bloom, 0.0, delta * 2.2)
 	_mythic_tick(delta)
@@ -231,7 +264,7 @@ func _tick(delta: float) -> void:
 		reloading = maxf(reloading - delta, 0.0)
 		using = maxf(using - delta, 0.0)
 		return
-	if state == State.GROUND and mantle_t < 0.0:
+	if state == State.GROUND and mantle_t < 0.0 and not knocked:
 		_combat(delta)
 	else:
 		burst_left = 0
@@ -267,14 +300,30 @@ func net_set_dead() -> void:
 	shield = 0.0
 	_mythic_clear()
 	state = State.DEAD
+	knocked = false
 	collision_layer = 0
 	collision_mask = 0
 	body.visible = false
 	build_piece = ""
 
 
+func net_set_knocked(on: bool) -> void:
+	## A client shows the knocked state the host decided (crawl pose and height; the bleed and the revive are the host's).
+	if on == knocked:
+		return
+	knocked = on
+	if net_puppet:
+		return
+	_set_height(KNOCK_H if on else STAND_H)
+	if on:
+		body.hold("")
+		build_piece = ""
+	else:
+		_refresh_held()
+
+
 func start_emote(name: String) -> void:
-	if state != State.GROUND or not _floor() or not Character.EMOTES.has(name):
+	if knocked or state != State.GROUND or not _floor() or not Character.EMOTES.has(name):
 		return
 	sliding = false
 	set_crouched(false)
@@ -317,6 +366,8 @@ func launch(up: float) -> void:
 
 
 func start_zip(line: Dictionary, from_end: float) -> void:
+	if knocked:
+		return
 	zip = {"line": line, "t": from_end, "dir": 1.0 if from_end < 0.5 else -1.0}
 	sliding = false
 	crouched = false
@@ -385,7 +436,28 @@ func depth() -> float:
 
 # ----------------------------------------------------------------------------- walking, crouching, sliding
 
+func _crawl(delta: float) -> void:
+	## Knocked: a slow crawl on the ground, no jumping, sprinting or sliding, no fall damage.
+	var w := _wish() * CRAWL_SPEED
+	run_target = w.length()
+	velocity.x = move_toward(velocity.x, w.x, 30.0 * delta)
+	velocity.z = move_toward(velocity.z, w.z, 30.0 * delta)
+	if is_on_floor():
+		velocity.y = -1.0
+	else:
+		velocity.y -= GRAVITY * delta
+	if is_on_floor() and is_on_wall():
+		_step_up(Vector3(velocity.x, 0, velocity.z))
+	move_and_slide()
+	fall_start = global_position.y
+	if depth() > SWIM_IN:
+		_enter_water()
+
+
 func _ground_move(delta: float) -> void:
+	if knocked:
+		_crawl(delta)
+		return
 	if hurdle_t >= 0.0:
 		_hurdle_step(delta)
 		in_jump = false
@@ -818,6 +890,8 @@ func select(i: int) -> void:
 
 
 func set_build(piece: String) -> void:
+	if knocked:
+		return
 	## Enter build mode with this piece; the same key again leaves it.
 	build_piece = "" if build_piece == piece else piece
 	reloading = 0.0
@@ -839,7 +913,7 @@ func cycle_build_mat() -> void:
 
 
 func _refresh_held() -> void:
-	if build_piece != "":
+	if build_piece != "" or knocked:
 		body.hold("")
 		return
 	var it = item()
@@ -914,7 +988,7 @@ func _spare_ammo(it: Dictionary) -> void:
 	var d: Dictionary = Items.def(it)
 	if d.ammo == "none":
 		return
-	ammo[d.ammo] += maxi(int(d.mag) * 2, int(Items.AMMO_PICKUP[d.ammo]))
+	ammo[d.ammo] += maxi(int(d.mag) * 3, int(Items.AMMO_PICKUP[d.ammo]) * 2)
 
 
 func swap_slots(i: int, j: int) -> void:
@@ -932,7 +1006,7 @@ func swap_slots(i: int, j: int) -> void:
 
 
 func drop_slot(i: int) -> void:
-	if i < 0 or slots[i] == null:
+	if knocked or i < 0 or slots[i] == null:
 		return
 	var it: Dictionary = slots[i]
 	slots[i] = null
@@ -1061,7 +1135,7 @@ func _combat(delta: float) -> void:
 
 func start_reload() -> void:
 	var it = item()
-	if it == null or reloading > 0.0 or Items.def(it).kind != "weapon":
+	if knocked or it == null or reloading > 0.0 or Items.def(it).kind != "weapon":
 		return
 	var d: Dictionary = Items.def(it)
 	if it.loaded >= d.mag or ammo[d.ammo] <= 0:
@@ -1074,7 +1148,7 @@ func start_reload() -> void:
 
 func start_use() -> void:
 	var it = item()
-	if it == null or using > 0.0:
+	if knocked or it == null or using > 0.0:
 		return
 	var d: Dictionary = Items.def(it)
 	if not _needs_use(d):
@@ -1227,12 +1301,24 @@ func hit(amount: float, attacker: Actor, bypass_shield: bool, from: Vector3) -> 
 		return                                         # nobody hurts them before they are hired, and no friendly fire
 	if is_player and attacker != null and attacker == game.hired:
 		return
+	if attacker != null and attacker != self and game.same_team(self, attacker):
+		return                                         # no friendly fire, from any weapon
 	stop_emote()
+	revive_t = 0.0                                     # taking damage interrupts a revive in progress
 	if attacker != null and attacker != self:
 		last_attacker = attacker
 		last_hit_from = from
 		last_hit_time = game.match_time
 		cancel_use()
+	if knocked:                                        # a knocked actor has no shield: damage goes straight to the knocked hp
+		knock_hp -= amount
+		if self == game.player:
+			game.sfx("hurt", Vector3.INF)
+		elif peer_id > 1 and game.nm:
+			game.nm.ev_to(peer_id, "ui_sfx", ["hurt"])
+		if knock_hp <= 0.0:
+			die(attacker if attacker != null else last_attacker)
+		return
 	var left := amount
 	if not bypass_shield and shield > 0.0:
 		var s := minf(shield, left)
@@ -1244,12 +1330,62 @@ func hit(amount: float, attacker: Actor, bypass_shield: bool, from: Vector3) -> 
 	elif peer_id > 1 and game.nm:
 		game.nm.ev_to(peer_id, "ui_sfx", ["hurt"])
 	if hp <= 0.0:
-		die(attacker if attacker != null else (last_attacker if game.match_time - last_hit_time < 8.0 else null))
+		var by: Actor = attacker if attacker != null else (last_attacker if game.match_time - last_hit_time < 8.0 else null)
+		if game.can_knock(self):
+			knock(by)
+		else:
+			die(by)
+
+
+func knock(attacker: Actor) -> void:
+	## Duos: down, not out, while a teammate is still up. Crawl, bleed, wait for a revive.
+	hp = 0.0
+	shield = 0.0
+	knocked = true
+	knock_hp = KNOCK_HP
+	revive_t = 0.0
+	revive_target = null
+	cancel_use()
+	stop_emote()
+	reloading = 0.0
+	burst_left = 0
+	charge = 0.0
+	build_piece = ""
+	in_fire = false
+	sliding = false
+	crouched = false
+	tsprint = false
+	tsprint_k = 0.0
+	zip = null
+	mantle_t = -1.0
+	hurdle_t = -1.0
+	_web_cancel()
+	grasp_pull = false
+	_set_height(KNOCK_H)
+	body.hold("")
+	game.on_knocked(self, attacker)
+
+
+func revive() -> void:
+	## Back on your feet with 30 hp and no shield.
+	if not knocked:
+		return
+	knocked = false
+	knock_hp = 0.0
+	hp = REVIVE_HP
+	shield = 0.0
+	revive_t = 0.0
+	_set_height(STAND_H)
+	_refresh_held()
 
 
 func die(killer: Actor) -> void:
 	if state == State.DEAD:
 		return
+	knocked = false
+	knock_hp = 0.0
+	revive_t = 0.0
+	revive_target = null
 	hp = 0.0
 	shield = 0.0
 	_mythic_clear()
@@ -1419,7 +1555,7 @@ func _web_fire() -> void:
 func web_swing_to(point: Vector3, held_fire := false) -> bool:
 	## Start swinging from `point` (anywhere, any range). Without held_fire the swing ends by web_release(), a jump,
 	## or after 4 seconds.
-	if state == State.DEAD or state == State.BLIMP or state == State.SWIM or stun_t > 0.0:
+	if knocked or state == State.DEAD or state == State.BLIMP or state == State.SWIM or stun_t > 0.0:
 		return false
 	zip = null
 	mantle_t = -1.0
@@ -1574,11 +1710,11 @@ func _grasp_fire() -> void:
 func grasp_at(target) -> bool:
 	## Lash at an Actor (yank and slam it) or a Vector3 surface point (pull yourself to it).
 	var d: Dictionary = Items.DEFS["ravage_grasp"]
-	if state == State.DEAD or state == State.BLIMP or stun_t > 0.0:
+	if knocked or state == State.DEAD or state == State.BLIMP or stun_t > 0.0:
 		return false
 	if target is Actor:
 		var v: Actor = target
-		if v == self or not v.alive() or v.state == State.BLIMP:
+		if v == self or not v.alive() or v.state == State.BLIMP or game.same_team(self, v):
 			return false
 		fire_cd = float(d.cooldown)
 		yank_victim = v
@@ -1749,7 +1885,7 @@ func charge_fire(c := 1.0) -> bool:
 func shockwave_fire(dir: Vector3) -> bool:
 	## Lob a shockwave orb from the eye along dir, with or without the item.
 	var d: Dictionary = Items.DEFS["shockwave_launcher"]
-	if state == State.DEAD or state == State.BLIMP or stun_t > 0.0:
+	if knocked or state == State.DEAD or state == State.BLIMP or stun_t > 0.0:
 		return false
 	game.sfx("shockwave_launcher", global_position)
 	game.spawn_shockwave(self, eye() + dir * 1.2, dir.normalized(), d)
