@@ -404,6 +404,13 @@ func _interaction() -> void:
 			if _use_pressed():
 				a.start_zip(wz[0], wz[1])
 		return
+	var vault = game.bosses.vault_near(a) if game.bosses != null else null
+	if vault != null:                                   # a keycard vault door
+		var has: bool = game.bosses.keycard_slot(a, vault) >= 0
+		prompt = (_key_hint() + " Open vault") if has else ("Needs " + Items.DEFS[vault.card].name)
+		if has and _use_pressed():
+			game.bosses.open_vault(vault, a)
+		return
 	var c = game.nearest_container(a.global_position, 2.8)
 	if c != null:
 		prompt = _key_hint() + " Open %s" % {"chest": "chest", "ammo_box": "ammo box", "supply_drop": "supply drop"}[c.kind]

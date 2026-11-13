@@ -37,6 +37,7 @@ var spread_mul := 1.0                    # bots: aim error on top of the weapon 
 var placement := 0
 var is_npc := false                     # a character for hire, not a player
 var hired := false
+var is_boss := false                    # a boss guarding a lair (bosses.gd): not a player, no placement
 var ever_armed := false
 var mats := {"wood": 0, "brick": 0, "metal": 0}
 var gold := 0                            # gold bars: spent at upgrade benches and on hiring characters

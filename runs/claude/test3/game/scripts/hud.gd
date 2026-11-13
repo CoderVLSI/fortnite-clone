@@ -135,6 +135,8 @@ func _draw() -> void:
 	_draw_hotbar(sz, s)
 	_draw_centre(sz, s, ctl, now)
 	_draw_notes(sz, now)
+	_draw_boss_bar(sz)
+	_draw_poi_banner(sz)
 	if game.warming_up():
 		var wl := int(ceil(game.warmup_left))
 		panel(Rect2(sz.x / 2 - 260, 128, 520, 64))
@@ -239,6 +241,8 @@ func _draw_map(origin: Vector2, extent: float, centre: Vector2, span: float, s: 
 		if box.has_point(bp2):
 			draw_rect(Rect2(bp2 - Vector2(4, 3), Vector2(8, 6)), Color(1.0, 0.8, 0.25))
 			draw_rect(Rect2(bp2 - Vector2(4, 3), Vector2(8, 6)), Color(0, 0, 0, 0.7), false, 1.0)
+	_draw_poi_names(origin, extent, centre, span, box, big)
+	_draw_boss_skulls(origin, extent, centre, span, box, big)
 	# supply drops: falling ones pulse, landed unopened ones stay marked
 	for d in game.events.drops:
 		var dp: Vector3 = (d.node as Node3D).global_position
@@ -262,6 +266,83 @@ func _draw_map(origin: Vector2, extent: float, centre: Vector2, span: float, s: 
 	var sc := 9.0 if big else 7.0
 	draw_colored_polygon(PackedVector2Array([pp + f * sc * 1.4, pp - f * sc * 0.8 + r * sc * 0.8, pp - f * sc * 0.3, pp - f * sc * 0.8 - r * sc * 0.8]), Color(1.0, 0.95, 0.3))
 	draw_polyline(PackedVector2Array([pp + f * sc * 1.4, pp - f * sc * 0.8 + r * sc * 0.8, pp - f * sc * 0.3, pp - f * sc * 0.8 - r * sc * 0.8, pp + f * sc * 1.4]), Color(0, 0, 0, 0.8), 1.5)
+
+
+func _draw_poi_names(origin: Vector2, extent: float, centre: Vector2, span: float, box: Rect2, big: bool) -> void:
+	## The names of the places, small on the minimap (only those in view), larger on the full map.
+	var inner := box.grow(-26.0 if not big else -4.0)
+	var size := 15 if big else 10
+	for q in game.events.pois:
+		if not q.label:
+			continue
+		var mp := _map_point(q.pos, origin, extent, centre, span)
+		if not inner.has_point(mp):
+			continue
+		var col := Color(1, 1, 1, 0.95) if big else Color(1, 1, 1, 0.85)
+		var lp := mp + Vector2(-70, 20 if big else 14)             # just under the place's centre, clear of its skull
+		draw_string_outline(font, lp, q.name, HORIZONTAL_ALIGNMENT_CENTER, 140.0, size, 5 if big else 3, Color(0, 0, 0, 0.8))
+		draw_string(font, lp, q.name, HORIZONTAL_ALIGNMENT_CENTER, 140.0, size, col)
+
+
+func _draw_boss_skulls(origin: Vector2, extent: float, centre: Vector2, span: float, box: Rect2, big: bool) -> void:
+	## A skull at the lair of every boss still alive.
+	if game.bosses == null:
+		return
+	for b in game.bosses.list:
+		if not b.alive:
+			continue
+		var mp := _map_point(Vector2(b.home.x, b.home.z), origin, extent, centre, span)
+		if box.has_point(mp):
+			_skull(mp, 11.0 if big else 7.0)
+
+
+func _skull(c: Vector2, r: float) -> void:
+	draw_circle(c, r + 2.0, Color(0, 0, 0, 0.85))
+	draw_circle(c, r, Color(0.95, 0.95, 0.9))
+	draw_rect(Rect2(c + Vector2(-r * 0.5, r * 0.45), Vector2(r, r * 0.75)), Color(0, 0, 0, 0.85))
+	draw_rect(Rect2(c + Vector2(-r * 0.4, r * 0.5), Vector2(r * 0.8, r * 0.65)), Color(0.95, 0.95, 0.9))
+	draw_circle(c + Vector2(-r * 0.38, -r * 0.1), r * 0.26, Color(0.1, 0.05, 0.05))
+	draw_circle(c + Vector2(r * 0.38, -r * 0.1), r * 0.26, Color(0.1, 0.05, 0.05))
+
+
+func _draw_boss_bar(sz: Vector2) -> void:
+	## Top of the screen: the boss within 60 m that we can see (or have hurt lately), with shield over health.
+	if game.bosses == null or game.bosses.hud_boss == null:
+		return
+	var b: Dictionary = game.bosses.hud_boss
+	var a: Actor = b.actor
+	if not a.alive():
+		return
+	var w := 460.0
+	var x := sz.x / 2 - w / 2
+	var y := 96.0
+	var mx_hp: float = Bosses.SPEC[b.id].hp
+	var mx_sh: float = Bosses.SPEC[b.id].shield
+	panel(Rect2(x - 10, y - 24, w + 20, 62), Color(0.05, 0.03, 0.05, 0.7))
+	_skull(Vector2(x + 6, y - 9), 8.0)
+	txt(Vector2(x + 22, y - 3), String(b.name).to_upper(), 20, Bosses.SPEC[b.id].plate)
+	txt(Vector2(x, y - 3), "%d" % int(ceil(a.hp + a.shield)), 14, Color(1, 1, 1, 0.85), HORIZONTAL_ALIGNMENT_RIGHT, w)
+	draw_rect(Rect2(x, y + 4, w, 8), Color(0, 0, 0, 0.6))
+	draw_rect(Rect2(x, y + 4, w * clampf(a.shield / mx_sh, 0.0, 1.0), 8), Color(0.35, 0.7, 1.0))
+	draw_rect(Rect2(x, y + 14, w, 12), Color(0, 0, 0, 0.6))
+	draw_rect(Rect2(x, y + 14, w * clampf(a.hp / mx_hp, 0.0, 1.0), 12), Color(0.9, 0.2, 0.18))
+	draw_rect(Rect2(x, y + 4, w, 22), Color(1, 1, 1, 0.35), false, 1.5)
+
+
+func _draw_poi_banner(sz: Vector2) -> void:
+	## "Entering": the name big with a small line under it, fading after about 2.5 s.
+	var pb: Dictionary = game.events.poi_banner
+	if pb.is_empty():
+		return
+	var age: float = Time.get_ticks_msec() / 1000.0 - float(pb.t)
+	if age > 2.5:
+		return
+	var al := clampf(minf(age / 0.3, (2.5 - age) / 0.8), 0.0, 1.0)
+	var y := sz.y * 0.36
+	txt(Vector2(0, y - 40), "ENTERING", 16, Color(1.0, 0.85, 0.4, al * 0.9), HORIZONTAL_ALIGNMENT_CENTER, sz.x)
+	txt(Vector2(0, y + 8), String(pb.name).to_upper(), 56, Color(1, 1, 1, al), HORIZONTAL_ALIGNMENT_CENTER, sz.x)
+	if String(pb.sub) != "":
+		txt(Vector2(0, y + 40), pb.sub, 22, Color(1.0, 0.45, 0.4, al), HORIZONTAL_ALIGNMENT_CENTER, sz.x)
 
 
 func _clip_segment(a: Vector2, b: Vector2, r: Rect2) -> Variant:

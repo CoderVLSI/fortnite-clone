@@ -34,6 +34,10 @@ const DEFS := {
 	"hydro_juice": {"name": "Hydro Juice", "kind": "heal", "asset": "hydro_juice", "stack": 2, "amount": 25.0, "use_time": 2.0, "cap": 100.0, "shield_amount": 25.0, "shield_cap": 100.0},
 	"mega_flask": {"name": "Mega Flask", "kind": "heal", "asset": "mega_flask", "stack": 1, "amount": 100.0, "use_time": 10.0, "cap": 100.0, "shield_amount": 100.0, "shield_cap": 100.0},
 	"launch_pad": {"name": "Launch Pad", "kind": "launcher", "asset": "launch_pad", "stack": 1},
+	# keycards (never in floor loot or chests): a boss drops one, and it opens the matching vault once
+	"keycard_weaver": {"name": "Weaver's Keycard", "kind": "keycard", "asset": "", "stack": 1, "vault": "weaver", "color": Color(0.2, 0.85, 0.8)},
+	"keycard_ravage": {"name": "Ravage's Keycard", "kind": "keycard", "asset": "", "stack": 1, "vault": "ravage", "color": Color(0.9, 0.2, 0.2)},
+	"keycard_tinker": {"name": "Tinker's Keycard", "kind": "keycard", "asset": "", "stack": 1, "vault": "tinker", "color": Color(0.95, 0.55, 0.15)},
 }
 const WEAPON_IDS := ["pistol", "shotgun", "assault_rifle", "sniper_rifle", "rocket_launcher", "smg", "tactical_shotgun", "burst_rifle", "hunting_rifle"]
 

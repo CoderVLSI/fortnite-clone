@@ -62,6 +62,15 @@ var ally_of: Actor = null               # a hired character: fights for this pla
 var rift_next := 0.0
 var shortcut = null                     # a rift or zip line end being walked to: {kind, pos, zip, end}
 var harvest_search := 0.0               # next time it may look for one (the search walks every tree and rock)
+# boss mode (a.is_boss, set up by bosses.gd): guards its lair, never loots, never goes to the storm
+const BOSS_MYTHICS := ["web_shooters", "ravage_grasp", "charge_shotgun", "shockwave_launcher"]
+const BOSS_NO_AUTO := ["web_shooters", "ravage_grasp", "charge_shotgun", "shockwave_launcher"]   # picked by _boss_slot, not by range score
+var boss_id := ""
+var boss_home := Vector3.ZERO
+var boss_face := 0.0
+var swing_next := 0.0
+var grasp_next := 0.0
+var charge_t := 0.0
 
 
 func setup(g: Node, actor: Actor, s: float) -> void:
@@ -127,6 +136,9 @@ func _warmup_tick(delta: float) -> void:
 
 
 func _tick(delta: float) -> void:
+	if a.is_boss:
+		_boss_tick(delta)
+		return
 	if game.warming_up():
 		if a.state == Actor.State.GROUND:
 			_warmup_tick(delta)
@@ -191,6 +203,8 @@ func _perceive() -> void:
 	var pool: Array = game.actors
 	if ally_of == null and game.hired != null and game.hired.alive():
 		pool = game.actors + [game.hired]                      # a hired character is fair game
+	if game.bosses != null:
+		pool = pool + game.bosses.alive_actors()               # and so are the bosses (see _engages: most bots keep clear)
 	for o in pool:
 		if o == a or o == ally_of or not o.alive() or o.state == Actor.State.BLIMP or o.state == Actor.State.SKYDIVE:
 			continue
@@ -319,6 +333,19 @@ func _decide() -> void:
 			_set_goal(_safe_point(0.6))
 		_shortcut(pos)
 		return
+	# 1b. a boss we are not equipped to fight: get away from it
+	if target != null and target.is_boss and target.alive() and game.match_time - target_seen < 1.5 and not _engages(target):
+		mode = "flee"
+		var away := pos - target.global_position
+		away.y = 0.0
+		var gp := pos + away.normalized() * 40.0
+		var gv := Vector3(gp.x, game.terrain.height(gp.x, gp.z), gp.z)
+		if not game.nav.dry(gv):
+			gv = _safe_point(0.7)
+		if not has_goal or goal.distance_to(gv) > 25.0:
+			has_goal = false
+			_set_goal(gv)
+		return
 	# 2. fight what we can see
 	if target != null and target.alive() and game.match_time - target_seen < 1.2:
 		# unarmed bots only swing back at someone right on top of them; otherwise they keep looking for a weapon
@@ -358,6 +385,16 @@ func _decide() -> void:
 	# hired: stay with the player instead of looting or hunting
 	if ally_of != null:
 		_follow_owner(pos)
+		return
+	# 3b. a boss's keycard in the pocket and its vault not far: go and open it
+	var vk = _vault_goal(pos)
+	if vk != null:
+		mode = "vault"
+		if Vector2(vk.front.x - pos.x, vk.front.z - pos.z).length() < 2.2:
+			game.bosses.open_vault(vk, a)
+			has_goal = false
+		else:
+			_set_goal(vk.front)
 		return
 	# 4. loot: anything useful close by; until armed, or when the guns run low, go looking for it
 	var low := _ammo_low()
@@ -452,6 +489,8 @@ func _wanted_pickup(max_d: float, armed: bool, low: Array) -> Variant:
 				continue
 		elif it.has("id") and Items.def(it).kind == "weapon":
 			need = 0.4 if not armed else 0.8
+		elif it.has("id") and Items.def(it).kind == "keycard":
+			need = 0.2
 		elif not armed or not low.is_empty():
 			continue                                   # heals and the like can wait until there is something to shoot
 		var sc := d * need
@@ -742,7 +781,7 @@ func _aim(delta: float) -> float:
 	var tp := target.centre()
 	var from := a.eye()
 	var dist := from.distance_to(tp)
-	var slot := a.best_weapon_slot(dist)
+	var slot := _boss_slot(dist) if a.is_boss else a.best_weapon_slot(dist)
 	if slot >= 0 and slot != a.active:
 		a.select(slot)
 	elif slot < 0 and a.active != -1:
@@ -815,6 +854,8 @@ func _fight(delta: float) -> void:
 			"pistol": want_d = 14.0
 			"sniper_rifle": want_d = 70.0
 			"rocket_launcher": want_d = 30.0
+			"charge_shotgun": want_d = 8.0
+			"shockwave_launcher": want_d = 22.0
 			_: want_d = 26.0
 	else:
 		want_d = 1.6
@@ -957,6 +998,8 @@ func _engages(o: Actor) -> bool:
 	## Early on bots loot first: they only start fights close by, or with someone already shooting them.
 	if ally_of != null:
 		return true
+	if o.is_boss:                                      # only well-equipped bots take a boss on: a shield and an epic or better gun
+		return a.shield >= 50.0 and _best_rarity() >= 3 and a.global_position.distance_to(o.global_position) < 55.0
 	if o == a.last_attacker and game.match_time - a.last_hit_time < 6.0:
 		return true
 	# the range opens up as the storm closes in: early range while it waits, then wider each phase
@@ -1111,3 +1154,184 @@ func _chop() -> bool:
 	a.aim_pitch = lerpf(a.aim_pitch, atan2(d.y, Vector2(d.x, d.z).length()), 0.5)
 	a.in_fire = true
 	return true
+
+
+# ----------------------------------------------------------------------------- keycards and bosses
+
+func _best_rarity() -> int:
+	var best := -1
+	for it in a.slots:
+		if it != null and Items.def(it).kind == "weapon" and _usable(it):
+			best = maxi(best, int(it.rarity))
+	return best
+
+
+func _vault_goal(pos: Vector3) -> Variant:
+	## The closed vault that a keycard in the pocket opens, if it is not far.
+	if game.bosses == null:
+		return null
+	for it in a.slots:
+		if it != null and Items.def(it).kind == "keycard":
+			var v = game.bosses.vaults.get(Items.def(it).vault)
+			if v != null and not v.opened and pos.distance_to(v.front) < 170.0 and not _avoided(v.front) and (not game.storm.active or _storm_allows(v.front)):
+				return v
+	return null
+
+
+func _boss_tick(delta: float) -> void:
+	## A boss guards its lair: fights what comes within reach (or hurts it), otherwise walks home and keeps watch.
+	if game.warming_up() or not a.alive() or game.over or (a.state != Actor.State.GROUND and a.state != Actor.State.SWIM):
+		a.in_fire = false
+		a.in_move = Vector2.ZERO
+		return
+	think -= delta
+	if think <= 0.0:
+		think = 0.15
+		_boss_perceive()
+	a.in_fire = false
+	a.in_sprint = false
+	a.in_move = Vector2.ZERO
+	a.stop_emote()
+	if target != null and target.alive() and game.match_time - target_seen < 3.0:
+		mode = "fight"
+		_boss_fight(delta)
+	else:
+		target = null
+		mode = "boss"
+		_boss_idle(delta)
+
+
+func _boss_perceive() -> void:
+	## The nearest player or bot within 35 m (80 m if it is the one that hurt us) that we can see, near the lair.
+	var best: Actor = null
+	var bd := 1e9
+	var pool: Array = game.actors
+	if game.hired != null and game.hired.alive():
+		pool = game.actors + [game.hired]
+	var hurt_by: Actor = a.last_attacker if game.match_time - a.last_hit_time < 8.0 else null
+	for o in pool:
+		if o == a or not o.alive() or o.state == Actor.State.BLIMP or o.state == Actor.State.SKYDIVE or o.state == Actor.State.GLIDE:
+			continue
+		var d := a.global_position.distance_to(o.global_position)
+		if d > (80.0 if o == hurt_by else Bosses.AGGRO) or d >= bd:
+			continue
+		if Vector2(o.global_position.x - boss_home.x, o.global_position.z - boss_home.z).length() > Bosses.LEASH + 25.0:
+			continue                                               # not chasing anyone far from home
+		if d > 8.0 and not game.can_see(a.eye(), o.eye()):
+			continue
+		bd = d
+		best = o
+	if best != null:
+		if best != target:
+			first_seen = game.match_time
+		target = best
+		target_seen = game.match_time
+		last_known = best.global_position
+	elif target != null and (not target.alive() or game.match_time - target_seen > 3.0):
+		target = null
+
+
+func _boss_idle(delta: float) -> void:
+	var hd := Vector2(a.global_position.x - boss_home.x, a.global_position.z - boss_home.z).length()
+	if hd > 3.0:
+		if not has_goal or goal.distance_to(boss_home) > 3.0:
+			has_goal = false
+			_set_goal(boss_home)
+		_follow(delta)
+		a.in_sprint = hd > 14.0
+	else:
+		has_goal = false
+		a.aim_yaw = lerp_angle(a.aim_yaw, boss_face + sin(game.match_time * 0.35) * 0.7, clampf(delta * 2.0, 0.0, 1.0))
+		a.aim_pitch = lerpf(a.aim_pitch, 0.0, clampf(delta * 3.0, 0.0, 1.0))
+
+
+func _boss_fight(delta: float) -> void:
+	var dist := a.eye().distance_to(target.centre())
+	var visible: bool = game.match_time - target_seen < 0.45
+	_boss_specials(dist, visible)
+	_fight(delta)
+	var it = a.item()
+	if it != null and BOSS_MYTHICS.has(it.id):
+		_use_mythic(delta, dist, visible)
+	var home_d := Vector2(a.global_position.x - boss_home.x, a.global_position.z - boss_home.z).length()
+	if home_d > Bosses.LEASH:                                      # at the end of the leash: back towards home, still shooting
+		var to := boss_home - a.global_position
+		to.y = 0.0
+		var m := to.normalized()
+		var fwd := Vector3(-sin(a.aim_yaw), 0, -cos(a.aim_yaw))
+		var right := Vector3(cos(a.aim_yaw), 0, -sin(a.aim_yaw))
+		a.in_move = Vector2(m.dot(right), m.dot(fwd))
+		a.in_sprint = true
+
+
+func _boss_slot(dist: float) -> int:
+	## The gun for this range. The mythics are kept out of the normal range score and chosen here.
+	var hidden := {}
+	for i in Items.SLOTS:
+		var it = a.slots[i]
+		if it != null and BOSS_NO_AUTO.has(it.id):
+			hidden[i] = it
+			a.slots[i] = null
+	var best: int = a.best_weapon_slot(dist)
+	for i in hidden:
+		a.slots[i] = hidden[i]
+	for i in hidden:
+		var it: Dictionary = hidden[i]
+		if Items.def(it).kind != "weapon" or not _usable(it):
+			continue
+		if it.id == "charge_shotgun" and dist < 16.0:
+			return i
+		if it.id == "shockwave_launcher" and dist > 8.0 and dist < 38.0 and fmod(game.match_time, 12.0) < 5.0:
+			return i
+	return best
+
+
+func _use_mythic(delta: float, dist: float, visible: bool) -> void:
+	## A mythic in hand: aim and hold the trigger like a normal gun (the charge shotgun is held about 0.8 s, then released).
+	var it = a.item()
+	a.in_fire = false
+	if not visible or a.reloading > 0.0 or game.match_time - first_seen < _reaction():
+		return
+	var d := target.centre() - a.eye()
+	if absf(angle_difference(a.aim_yaw, atan2(-d.x, -d.z))) > 0.15:
+		return
+	if dist > float(Items.def(it).get("range", 40.0)):
+		return
+	if it.id == "charge_shotgun":
+		charge_t += delta
+		if charge_t < 0.8:
+			a.in_fire = true
+		elif charge_t > 1.4:
+			charge_t = 0.0
+		return
+	a.in_fire = true
+
+
+func _boss_specials(dist: float, visible: bool) -> void:
+	## Mythic moves, when the other feature has given the actor them: Weaver's web swings, Ravage's grasp.
+	if not visible:
+		return
+	var now: float = game.match_time
+	if boss_id == "weaver" and a.has_method("web_swing_to") and now >= swing_next:
+		var hurt: bool = a.hp + a.shield < 0.45 * float(a.get_meta("boss_max", 900.0))
+		if hurt or game.rng.randf() < 0.3:
+			var p: Vector3
+			if hurt:
+				var away := a.global_position - target.global_position
+				away.y = 0.0
+				p = a.global_position + away.normalized() * 22.0
+			else:
+				p = target.global_position + Vector3(game.rng.randf_range(-7, 7), 0, game.rng.randf_range(-7, 7))
+			var off := Vector2(p.x - boss_home.x, p.z - boss_home.z)
+			if off.length() > Bosses.LEASH:
+				off = off.normalized() * Bosses.LEASH
+				p.x = boss_home.x + off.x
+				p.z = boss_home.z + off.y
+			p.y = game.terrain.height(p.x, p.z)
+			a.web_swing_to(p)
+			swing_next = now + (5.0 if hurt else game.rng.randf_range(7.0, 12.0))
+		else:
+			swing_next = now + 2.0
+	elif boss_id == "ravage" and a.has_method("grasp_at") and now >= grasp_next and dist > 8.0 and dist < 30.0:
+		a.grasp_at(target)
+		grasp_next = now + 7.0

@@ -184,8 +184,8 @@ func _register_trees(body: StaticBody3D) -> void:
 
 
 func lookup(collider: Object, shape := 0) -> Variant:
-	if collider == null:
-		return null
+	if collider == null or (collider is Node and (collider as Node).has_meta("indestructible")):
+		return null                                       # keycard vaults: no pickaxe, bullet or blast marks them
 	var id := collider.get_instance_id()
 	if trees.has(id):
 		return trees[id].get(shape)

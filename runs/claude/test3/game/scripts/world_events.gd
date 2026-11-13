@@ -24,6 +24,10 @@ var rifts: Array = []            # {node, pos}
 var benches: Array = []          # upgrade benches: {node, pos}
 const UPGRADE_COST := [100, 150, 200, 250]    # gold to go up from Common, Uncommon, Rare, Epic
 var puffs: Array = []
+var pois: Array = []             # named places: {name, pos (Vector2), r, label}
+var poi_current := ""            # the place the player is standing in
+var poi_banner := {}             # {name, sub, t (real seconds)}: the "entering" banner, drawn by hud.gd
+var poi_tick := 0
 var cooldown := {}               # actor instance id -> time it may trigger a pad or rift again
 var puff_mesh: SphereMesh
 
@@ -39,6 +43,7 @@ func setup(g: Node) -> void:
 	_build_rifts()
 	_build_benches()
 	_spawn_forage()
+	_build_pois()
 
 
 # ----------------------------------------------------------------------------- set-up
@@ -304,9 +309,65 @@ func _spawn_forage() -> void:
 	game.stats["forage"] = n
 
 
+# ----------------------------------------------------------------------------- named places
+
+func _build_pois() -> void:
+	## The points of interest: name, centre and radius. Several entries may share a name (the mesas stand apart).
+	var T = game.terrain
+	var m: Array = T.mesas
+	var pair: Vector2 = ((m[0][0] as Vector2) + (m[1][0] as Vector2)) / 2.0
+	for d in [["Oakmoor Village", T.village, 62.0], ["Gearworks Yard", T.yard, 64.0], ["Hayfield Farm", T.farm, 62.0],
+			["Mirror Lake", T.lake, 46.0], ["Frostpeak", T.snow_town, 50.0], ["Sunscorch", T.desert_town, 48.0],
+			["Sandbar Depot", T.depot, 46.0], ["Willow Hamlet", T.west_hamlet, 40.0], ["Gull Cove", T.east_cove, 38.0]]:
+		pois.append({"name": d[0], "pos": d[1], "r": d[2], "label": true})
+	pois.append({"name": "Red Mesas", "pos": pair, "r": 62.0, "label": true})
+	pois.append({"name": "Red Mesas", "pos": m[2][0], "r": float(m[2][1]) + 24.0, "label": true})
+	pois.append({"name": "Red Mesas", "pos": m[3][0], "r": float(m[3][1]) + 24.0, "label": true})
+
+
+func poi_names() -> Array:
+	var out: Array = []
+	for p in pois:
+		if not out.has(p.name):
+			out.append(p.name)
+	return out
+
+
+func poi_at(p: Vector2) -> String:
+	## The name of the place this point is in ("" in the wilds); the one it is deepest inside wins.
+	var best := ""
+	var best_k := 1.0
+	for q in pois:
+		var k: float = p.distance_to(q.pos) / float(q.r)
+		if k < best_k:
+			best_k = k
+			best = q.name
+	return best
+
+
+func _update_poi() -> void:
+	## Walking into a named place shows its banner (not while still on the blimp or skydiving).
+	var p: Actor = game.player
+	if p == null or not p.alive() or p.state == Actor.State.BLIMP or p.state == Actor.State.SKYDIVE:
+		return
+	var nm := poi_at(Vector2(p.global_position.x, p.global_position.z))
+	if nm == poi_current:
+		return
+	poi_current = nm
+	if nm == "":
+		return
+	var sub := ""
+	if game.get("bosses") != null:
+		sub = game.bosses.poi_subtitle(nm)
+	poi_banner = {"name": nm, "sub": sub, "t": Time.get_ticks_msec() / 1000.0}
+
+
 # ----------------------------------------------------------------------------- frame
 
 func _physics_process(delta: float) -> void:
+	poi_tick += 1
+	if poi_tick % 6 == 0:
+		_update_poi()
 	if drop_i < DROP_TIMES.size() and game.match_time >= DROP_TIMES[drop_i] and game.storm.active:
 		drop_i += 1
 		spawn_drop()
