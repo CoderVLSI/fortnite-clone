@@ -648,14 +648,14 @@ func _run_soundtest() -> void:
 
 # ----------------------------------------------------------------------------- eliminations
 
-func on_damage_dealt(attacker: Actor, victim: Actor, amount: float, at: Vector3) -> void:
+func on_damage_dealt(attacker: Actor, victim: Actor, amount: float, at: Vector3, headshot := false) -> void:
 	stats.damage += amount
 	if attacker == player:
 		player_damage += amount
 	if attacker == player and attacker != victim:
 		sfx("hit_marker", Vector3.INF)
 	if attacker == player and hud:
-		hud.add_damage_number(at, amount, victim.shield > 0.0, not victim.alive())
+		hud.add_damage_number(at, amount, victim.shield > 0.0, not victim.alive(), headshot)
 	if victim == player and hud and attacker:
 		hud.add_damage_arc(attacker.global_position)
 

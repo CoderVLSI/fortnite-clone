@@ -12,6 +12,10 @@ var arcs: Array = []                      # incoming damage directions {from, bo
 var notes: Array = []                     # pickup notes {text, color, born}
 var hit_time := -9.0
 var kill_time := -9.0
+var head_time := -9.0                     # last headshot by the player: the hit marker and a HEADSHOT tag go yellow
+const HEAD_COL := Color(1.0, 0.86, 0.15)
+const ON_HEAD_COL := Color(1.0, 0.18, 0.15)   # the crosshair over an enemy's head
+var xcol := Color(1, 1, 1)                # crosshair colour this frame
 var mat_notes: Array = []
 var icons := {}                           # name -> Texture2D (null when missing)                 # +N popups next to the material counters {mat, n, crit, born}
 
@@ -24,10 +28,14 @@ func setup(g: Node) -> void:
 	map_tex = load("res://textures/minimap.png")
 
 
-func add_damage_number(at: Vector3, amount: float, shielded: bool, killed: bool) -> void:
-	numbers.append({"pos": at + Vector3(0, 0.3, 0), "text": str(int(round(amount))), "color": Color(0.45, 0.75, 1.0) if shielded else Color(1, 1, 1), "born": game.match_time,
-			"dx": randf_range(-30, 30)})
+func add_damage_number(at: Vector3, amount: float, shielded: bool, killed: bool, headshot := false) -> void:
+	## White on health, blue on shield, yellow and bigger for a headshot.
+	var col := HEAD_COL if headshot else (Color(0.45, 0.75, 1.0) if shielded else Color(1, 1, 1))
+	numbers.append({"pos": at + Vector3(0, 0.3, 0), "text": str(int(round(amount))), "color": col, "born": game.match_time,
+			"dx": randf_range(-30, 30), "size": 34 if headshot else 26})
 	hit_time = game.match_time
+	if headshot:
+		head_time = game.match_time
 	if killed:
 		kill_time = game.match_time
 
@@ -168,7 +176,7 @@ func _draw_world_numbers(cam: Camera3D, now: float) -> void:
 		if cam.is_position_behind(n.pos):
 			continue
 		var sp := cam.unproject_position(n.pos) + Vector2(n.dx, -70.0 * age)
-		txt(sp, n.text, 26, Color(n.color.r, n.color.g, n.color.b, 1.0 - age / 0.9))
+		txt(sp, n.text, int(n.get("size", 26)), Color(n.color.r, n.color.g, n.color.b, 1.0 - age / 0.9))
 
 
 func _draw_arcs(sz: Vector2, ctl: Node, now: float) -> void:
@@ -508,12 +516,30 @@ func _spread_px(sz: Vector2, ctl: Node, deg: float) -> float:
 
 func _xline(a: Vector2, b: Vector2, w := 2.0) -> void:
 	draw_line(a, b, Color(0, 0, 0, 0.65), w + 2.0)
-	draw_line(a, b, Color(1, 1, 1, 0.95), w)
+	draw_line(a, b, Color(xcol.r, xcol.g, xcol.b, 0.95), w)
 
 
 func _xring(c: Vector2, r: float, w := 2.0) -> void:
 	draw_arc(c, r, 0, TAU, 48, Color(0, 0, 0, 0.6), w + 2.0)
-	draw_arc(c, r, 0, TAU, 48, Color(1, 1, 1, 0.92), w)
+	draw_arc(c, r, 0, TAU, 48, Color(xcol.r, xcol.g, xcol.b, 0.92), w)
+
+
+func _xdot(c: Vector2, r: float) -> void:
+	draw_circle(c, r, Color(xcol.r, xcol.g, xcol.b, 0.92))
+
+
+func aiming_at_head(s: Actor, ctl: Node) -> bool:
+	## Is the crosshair on an enemy's head right now? The same test the shot uses (Actor.is_head_point).
+	var cam: Camera3D = ctl.cam
+	var from := cam.global_position
+	var dir := -cam.global_transform.basis.z
+	var res: Dictionary = game.ray(from + dir * 2.0, from + dir * 420.0, s)
+	if res.is_empty() or not (res.collider is Actor):
+		return false
+	var v: Actor = res.collider
+	if not v.alive() or v == s or (v.is_npc and not v.hired) or v == game.hired:
+		return false
+	return v.is_head_point(res.position)
 
 
 func _draw_emote_wheel(sz: Vector2, ctl: Node) -> void:
@@ -543,6 +569,7 @@ func _draw_emote_wheel(sz: Vector2, ctl: Node) -> void:
 func _draw_crosshair(sz: Vector2, s: Actor, ctl: Node) -> void:
 	## A reticle per weapon, sized to the weapon's real spread right now.
 	var c := sz / 2
+	xcol = Color(1, 1, 1)
 	if s.state == Actor.State.SWIM:
 		_xring(c, 3.0, 1.5)
 		return
@@ -553,12 +580,14 @@ func _draw_crosshair(sz: Vector2, s: Actor, ctl: Node) -> void:
 	var it = s.item()
 	if it == null:                                  # pickaxe: a small circle
 		_xring(c, 6.0, 1.5)
-		draw_circle(c, 1.5, Color(1, 1, 1, 0.9))
+		_xdot(c, 1.5)
 		return
 	var d: Dictionary = Items.def(it)
+	if d.kind == "weapon" and aiming_at_head(s, ctl):
+		xcol = ON_HEAD_COL                          # on an enemy's head: the reticle turns red
 	if d.kind != "weapon":                          # consumables and throwables: a dot
 		draw_circle(c, 3.5, Color(0, 0, 0, 0.6))
-		draw_circle(c, 2.2, Color(1, 1, 1, 0.95))
+		_xdot(c, 2.2)
 		return
 	var gap := clampf(_spread_px(sz, ctl, s.spread_deg(d)), 4.0, sz.y * 0.06)          # never wider than a small part of the screen
 	match it.id:
@@ -567,20 +596,20 @@ func _draw_crosshair(sz: Vector2, s: Actor, ctl: Node) -> void:
 			_xring(c, gap, 2.0)
 			for dv in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
 				_xline(c + dv * (gap - 4.0), c + dv * (gap + 6.0), 2.0)
-			draw_circle(c, 1.6, Color(1, 1, 1, 0.9))
+			_xdot(c, 1.6)
 		"sniper_rifle", "hunting_rifle":              # the hunting rifle has no scope: ring and dot only
 			if not scoped(s, ctl):
-				draw_circle(c, 2.2, Color(1, 1, 1, 0.95))
+				_xdot(c, 2.2)
 				_xring(c, 9.0, 1.2)
 		"rocket_launcher":                          # a ring with range ticks below
 			_xring(c, 14.0, 2.0)
-			draw_circle(c, 2.0, Color(1, 1, 1, 0.95))
+			_xdot(c, 2.0)
 			for k in 3:
 				_xline(c + Vector2(-6 + k * 1.5, 22 + k * 9), c + Vector2(6 - k * 1.5, 22 + k * 9), 1.5)
 		_:                                          # pistol and rifle: four lines that open with the spread
 			for dv in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
 				_xline(c + dv * gap, c + dv * (gap + 9.0), 2.0)
-			draw_circle(c, 1.6, Color(1, 1, 1, 0.9))
+			_xdot(c, 1.6)
 
 
 func scoped(s: Actor, ctl: Node) -> bool:
@@ -632,10 +661,16 @@ func _draw_centre(sz: Vector2, s: Actor, ctl: Node, now: float) -> void:
 	# hit marker: white cross, red when it was an elimination
 	var ht := now - hit_time
 	if ht < 0.22:
-		var col := Color(1.0, 0.25, 0.2) if now - kill_time < 0.4 else Color(1, 1, 1)
+		var col := Color(1.0, 0.25, 0.2) if now - kill_time < 0.4 else (HEAD_COL if now - head_time < 0.3 else Color(1, 1, 1))
 		col.a = 1.0 - ht / 0.22
 		for d2 in [Vector2(1, 1), Vector2(-1, 1), Vector2(1, -1), Vector2(-1, -1)]:
 			draw_line(c + d2 * 9, c + d2 * 19, col, 3.0)
+	# headshot: a yellow tag under the crosshair
+	var hs := now - head_time
+	if hs < 0.75:
+		var a := 1.0 if hs < 0.45 else 1.0 - (hs - 0.45) / 0.3
+		var lift := 6.0 * minf(hs / 0.12, 1.0)
+		txt(c + Vector2(-90, 54 - lift), "HEADSHOT", 20, Color(HEAD_COL.r, HEAD_COL.g, HEAD_COL.b, a), HORIZONTAL_ALIGNMENT_CENTER, 180)
 	# reload / use progress
 	var prog := -1.0
 	var label := ""

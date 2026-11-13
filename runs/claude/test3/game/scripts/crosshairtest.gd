@@ -67,6 +67,58 @@ func _ready() -> void:
 		var img := get_viewport().get_texture().get_image()
 		shots.append([cs[0], img])
 		a.in_move = Vector2.ZERO
+	# aiming at a player: body (white reticle), head (red reticle), then a headshot (yellow number and HEADSHOT tag)
+	ctl.force_aim = false
+	a.select(a.find_item("assault_rifle"))
+	var target: Actor = null
+	for o in game.actors:
+		if o != a and o.alive():
+			target = o
+			break
+	target.process_mode = Node.PROCESS_MODE_INHERIT       # a disabled body leaves the physics world: keep it in, but frozen
+	target.set_physics_process(false)
+	for ch in target.get_children():
+		if not (ch is CollisionShape3D) and ch != target.body:
+			ch.process_mode = Node.PROCESS_MODE_DISABLED
+	target.state = Actor.State.GROUND
+	target.hp = 100.0
+	target.shield = 0.0
+	var head_shots := []
+	for mode in ["body", "head", "headshot"]:
+		ctl.yaw = a.aim_yaw
+		await frames(25)
+		var cam: Camera3D = ctl.cam
+		var from := cam.global_position
+		var dir := -cam.global_transform.basis.z
+		var ground: Dictionary = game.ray(from + dir * 2.0, from + dir * 60.0, a, 1)
+		var dist := clampf((from.distance_to(ground.position) if not ground.is_empty() else 14.0) * 0.6, 5.0, 14.0)
+		var on_ray := from + dir * dist                  # above the ground: the camera looks a little down
+		target.global_position = on_ray - (Vector3(0, 1.1, 0) if mode == "body" else Actor.EYE + Vector3(0, 0.05, 0))
+		target.aim_yaw = atan2(dir.x, dir.z)
+		target.body.rotation.y = target.aim_yaw
+		target.body.visible = true
+		await frames(4)
+		print("%s  aiming_at_head(%s) = %s" % ["PASS" if game.hud.aiming_at_head(a, ctl) == (mode != "body") else "FAIL", mode, game.hud.aiming_at_head(a, ctl)])
+		if mode == "headshot":
+			a.bloom = 0.0
+			a.last_shot_t = -99.0
+			var hp0 := target.hp
+			a.in_fire = true
+			await get_tree().physics_frame
+			a.in_fire = false
+			await frames(8)
+			print("%s  headshot damage %.0f (rifle 30 x rarity x 1.5)" % ["PASS" if hp0 - target.hp > 40.0 else "FAIL", hp0 - target.hp])
+			print("%s  headshot tag shown" % ("PASS" if game.match_time - game.hud.head_time < 0.5 else "FAIL"))
+		await get_tree().process_frame
+		await get_tree().process_frame
+		head_shots.append(get_viewport().get_texture().get_image())
+	var hsz: Vector2i = head_shots[0].get_size()
+	var hc := Vector2i(360, 300)
+	var hsheet := Image.create(hc.x * 3, hc.y, false, Image.FORMAT_RGBA8)
+	for i in 3:
+		var part: Image = head_shots[i].get_region(Rect2i(hsz.x / 2 - hc.x / 2, hsz.y / 2 - hc.y / 2 - 40, hc.x, hc.y))
+		hsheet.blit_rect(part, Rect2i(Vector2i.ZERO, hc), Vector2i(i * hc.x, 0))
+	hsheet.save_png(ProjectSettings.globalize_path("res://").path_join("../captures/headshot.png"))
 	# sheet: centre crops, and the full scoped view
 	var sz: Vector2i = shots[0][1].get_size()
 	var crop := 220

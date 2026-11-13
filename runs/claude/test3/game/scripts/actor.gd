@@ -110,6 +110,11 @@ func alive() -> bool:
 	return state != State.DEAD
 
 
+func is_head_point(p: Vector3) -> bool:
+	## True when a point on this actor (a hit or what the crosshair is on) is on the head.
+	return p.y > eye().y - 0.12
+
+
 func eye() -> Vector3:
 	return global_position + Vector3(0, 1.05 if (crouched or sliding) else EYE.y, 0)
 
@@ -948,10 +953,11 @@ func _shoot(it: Dictionary, d: Dictionary) -> void:
 			var victim: Actor = res.collider
 			var dist := from.distance_to(endp)
 			var dmg := Items.damage(it) * (1.0 if dist <= d.range else clampf(1.0 - (dist - d.range) / d.range, 0.35, 1.0))
-			if endp.y > victim.eye().y - 0.12 and d.pellets == 1:
+			var head := victim.is_head_point(endp)
+			if head and d.pellets == 1:
 				dmg *= 1.5                                    # headshot
 			victim.hit(dmg, self, false, global_position)
-			game.on_damage_dealt(self, victim, dmg, endp)
+			game.on_damage_dealt(self, victim, dmg, endp, head)
 		elif res.has("collider"):
 			game.structures.damage_at(res.collider, res.get("shape", 0), Items.damage(it), self, endp)
 		game.fx_tracer(from + dir * 1.0 + Vector3(0, -0.2, 0), endp, it.rarity)
