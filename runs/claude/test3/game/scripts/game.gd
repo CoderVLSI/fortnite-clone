@@ -72,6 +72,7 @@ var nm: Node                             # NetMatch: snapshots, inputs, commands
 var netsvc: Node                         # the Net autoload
 var my_idx := 0                          # index in `actors` of the human at this keyboard
 var humans: Array = []                   # Actors of all human players (net matches)
+var net_wait_t := 0.0
 var net_waiting := false                 # host: waiting for every client to finish loading
 var nettest := ""                        # --nettest-host / --nettest-client
 var warmup_len := 20.0
@@ -701,7 +702,8 @@ func _end_warmup() -> void:
 
 func _physics_process(delta: float) -> void:
 	if net_waiting:
-		if net_host and netsvc.all_loaded():
+		net_wait_t += delta
+		if net_host and (netsvc.all_loaded() or net_wait_t > 30.0):          # (a client that never loads is dropped after 30 s)
 			net_waiting = false
 		else:
 			return

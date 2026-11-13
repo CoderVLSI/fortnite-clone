@@ -48,6 +48,13 @@ func _ready() -> void:
 	_build_ui()
 	_show_lobby()
 	Settings.play_music("lobby", -4.0, 1.5)
+	Net.match_over_cleanup()
+	for sig in [Net.party_changed, Net.found_changed]:
+		sig.connect(_refresh_party)
+	Net.status_changed.connect(func(_m: String) -> void: _refresh_party())
+	Net.left.connect(func(_r: String) -> void: _refresh_party())
+	Net.prep.connect(_on_host_starting)
+	_refresh_party()
 	if shot_dir != "":
 		_run_shots()
 
@@ -210,7 +217,10 @@ func _process(delta: float) -> void:
 		status_label.text = "MATCH STARTS IN  %d" % maxi(ceili(countdown), 1)
 		if countdown <= 0.0:
 			countdown = -1.0
-			get_tree().change_scene_to_file(GAME_SCENE)
+			if Net.is_host():
+				Net.start_match()                                    # everyone in the party loads the match
+			else:
+				get_tree().change_scene_to_file(GAME_SCENE)
 
 
 func _unhandled_input(e: InputEvent) -> void:
@@ -384,6 +394,7 @@ func _build_play_page() -> void:
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		nv.add_child(l)
 	lobby_box.add_child(news)
+	_build_party_card()
 
 
 func _build_locker_page() -> void:
@@ -487,6 +498,7 @@ func _show_lobby() -> void:
 		ready_btn.text = "PLAY"
 		_set_tabs_locked(false)
 	_refresh_level()
+	_refresh_party()
 
 
 func _show_locker() -> void:
@@ -521,11 +533,166 @@ func _cycle_bots() -> void:
 
 func _on_ready() -> void:
 	## PLAY: a short matchmaking beat, then the countdown into the match.
+	if Net.is_active() and not Net.is_host():
+		return                                               # in a party only the host starts the match
+	if Net.is_host():
+		Net.announce_start()
 	ready_btn.disabled = true
 	ready_btn.text = "READY!"
 	_set_tabs_locked(true)
 	matchmaking = 1.6
 	status_label.text = "Finding a match..."
+
+
+# ----------------------------------------------------------------------------- party (LAN play)
+
+var party_card: PanelContainer
+var party_status: Label
+var party_members: VBoxContainer
+var party_found: VBoxContainer
+var party_start_row: Control
+var party_ip_edit: LineEdit
+var party_ip_label: Label
+var party_leave_btn: Button
+var party_btns: Control
+var partner_char: Character
+
+
+func _build_party_card() -> void:
+	party_card = _card(Control.PRESET_TOP_LEFT)
+	party_card.offset_left = 36
+	party_card.offset_top = 92
+	party_card.offset_right = 470
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	party_card.add_child(v)
+	v.add_child(MenuUI.label("PARTY  ·  play together on this Wi-Fi", 20, MenuUI.ACCENT))
+	party_status = MenuUI.label("", 15, MenuUI.DIM)
+	party_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	v.add_child(party_status)
+	party_ip_label = MenuUI.label("", 22, Color.WHITE)
+	v.add_child(party_ip_label)
+	party_start_row = VBoxContainer.new()
+	party_start_row.add_theme_constant_override("separation", 6)
+	v.add_child(party_start_row)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	party_start_row.add_child(row)
+	var host_btn := MenuUI.button("HOST A GAME", 17, Vector2(0, 42))
+	host_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	host_btn.pressed.connect(func() -> void: Net.host_lobby())
+	row.add_child(host_btn)
+	var find_btn := MenuUI.button("FIND GAMES", 17, Vector2(0, 42))
+	find_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	find_btn.pressed.connect(func() -> void:
+		Net.start_find()
+		_refresh_party())
+	row.add_child(find_btn)
+	party_found = VBoxContainer.new()
+	party_found.add_theme_constant_override("separation", 4)
+	party_start_row.add_child(party_found)
+	var jrow := HBoxContainer.new()
+	jrow.add_theme_constant_override("separation", 8)
+	party_start_row.add_child(jrow)
+	party_ip_edit = LineEdit.new()
+	party_ip_edit.placeholder_text = "Host's IP, e.g. 192.168.1.20"
+	party_ip_edit.custom_minimum_size = Vector2(0, 42)
+	party_ip_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	party_ip_edit.add_theme_font_size_override("font_size", 17)
+	party_ip_edit.text_submitted.connect(func(t: String) -> void: Net.join(t))
+	jrow.add_child(party_ip_edit)
+	var join_btn := MenuUI.button("JOIN", 17, Vector2(90, 42))
+	join_btn.pressed.connect(func() -> void: Net.join(party_ip_edit.text))
+	jrow.add_child(join_btn)
+	party_members = VBoxContainer.new()
+	party_members.add_theme_constant_override("separation", 4)
+	v.add_child(party_members)
+	party_leave_btn = MenuUI.button("LEAVE PARTY", 16, Vector2(0, 38))
+	party_leave_btn.pressed.connect(func() -> void: Net.leave())
+	v.add_child(party_leave_btn)
+	lobby_box.add_child(party_card)
+
+
+func _refresh_party() -> void:
+	if party_card == null or not is_instance_valid(party_card):
+		return
+	var active := Net.is_active()
+	party_start_row.visible = not active
+	party_leave_btn.visible = active
+	party_members.visible = active
+	var msg := Net.status
+	if msg == "" and Net.last_message != "":
+		msg = Net.last_message
+	party_status.text = msg if msg != "" else "Host a game, or find or join your friend's. Same Wi-Fi only."
+	party_ip_label.visible = Net.is_host()
+	if Net.is_host():
+		party_ip_label.text = "Your IP:  %s   (port %d)" % [Net.lan_ip(), Net.PORT]
+	for c in party_found.get_children():
+		c.queue_free()
+	if not active:
+		var list: Array = Net.found.values()
+		for g in list:
+			var b := MenuUI.button("%s   ·   %s   ·   %d in party" % [g.name, g.ip, g.players], 16, Vector2(0, 38))
+			b.pressed.connect(func() -> void: Net.join(g.ip))
+			party_found.add_child(b)
+		if list.is_empty() and Net._listener != null:
+			party_found.add_child(MenuUI.label("Searching ...  (if nothing shows up, type the host's IP below)", 14, MenuUI.DIM))
+	for c in party_members.get_children():
+		c.queue_free()
+	var me := Net.my_id()
+	for p in Net.peers:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		var o: Array = Settings.OUTFITS[clampi(int(p.outfit), 0, Settings.OUTFITS.size() - 1)]
+		var sw := ColorRect.new()
+		sw.color = o[1]
+		sw.custom_minimum_size = Vector2(22, 22)
+		row.add_child(sw)
+		var sw2 := ColorRect.new()
+		sw2.color = o[2]
+		sw2.custom_minimum_size = Vector2(10, 22)
+		row.add_child(sw2)
+		row.add_child(MenuUI.label("%s%s%s" % [p.name, "  (you)" if int(p.id) == me else "", "  ·  host" if int(p.id) == 1 else ""], 18, Color.WHITE))
+		party_members.add_child(row)
+	# PLAY: only the host starts a party's match
+	if active and not Net.is_host():
+		ready_btn.text = "Waiting for host"
+		ready_btn.disabled = true
+	elif countdown < 0.0 and matchmaking < 0.0:
+		ready_btn.text = "PLAY"
+		ready_btn.disabled = false
+	_dress_partner()
+
+
+func _dress_partner() -> void:
+	## A second character on the stage when someone is in the party.
+	var other = null
+	for p in Net.peers:
+		if int(p.id) != Net.my_id():
+			other = p
+	if other == null:
+		if partner_char:
+			partner_char.queue_free()
+			partner_char = null
+		return
+	if partner_char:
+		partner_char.queue_free()
+	var o: Array = Settings.OUTFITS[clampi(int(other.outfit), 0, Settings.OUTFITS.size() - 1)]
+	partner_char = Character.new()
+	pivot.add_child(partner_char)
+	partner_char.build(o[1], o[2], Color.WHITE, o[3])
+	partner_char.position = Vector3(-1.25, 0.04, -0.4)
+	partner_char.rotation.y = PI + 0.25
+	partner_char.hold("")
+	partner_char._play("Idle", 1.0)
+
+
+func _on_host_starting() -> void:
+	## The host pressed PLAY: show the same matchmaking beat here.
+	ready_btn.text = "Starting ..."
+	ready_btn.disabled = true
+	_set_tabs_locked(true)
+	status_label.text = "The host is starting the match ..."
 
 
 # ----------------------------------------------------------------------------- capture mode

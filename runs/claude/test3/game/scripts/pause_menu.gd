@@ -50,7 +50,7 @@ func open() -> void:
 	root.visible = true
 	buttons.visible = true
 	settings.visible = false
-	get_tree().paused = true
+	get_tree().paused = not game.net_active                # a LAN match keeps running for the others
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
@@ -72,6 +72,8 @@ func _open_settings() -> void:
 
 func _leave() -> void:
 	get_tree().paused = false
+	if game.net_active:
+		game.netsvc.leave("You left the match")           # the host's copy of you is eliminated; a host leaving ends it for the client
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	get_tree().change_scene_to_file("res://scenes/menu.tscn")
 

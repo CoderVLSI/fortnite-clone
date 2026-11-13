@@ -15,6 +15,7 @@ signal party_changed
 signal status_changed(msg: String)
 signal left(reason: String)
 signal found_changed
+signal prep
 
 var role := "off"                       # "off" | "host" | "client"
 var peers: Array = []                   # {id, name, outfit, ready}; the host is id 1
@@ -291,6 +292,17 @@ func all_loaded() -> bool:
 		if p.id != 1 and not loaded.get(p.id, false):
 			return false
 	return true
+
+
+func announce_start() -> void:
+	## The host pressed PLAY: the clients show that the match is about to start.
+	if role == "host" and multiplayer.get_peers().size() > 0:
+		rpc("_r_prep")
+
+
+@rpc("authority", "reliable")
+func _r_prep() -> void:
+	prep.emit()
 
 
 func match_over_cleanup() -> void:

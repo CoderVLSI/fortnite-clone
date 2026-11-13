@@ -268,6 +268,8 @@ func boss_died(victim: Actor, killer: Actor) -> void:
 			"mine": killer == game.player})
 	if game.kill_feed.size() > 6:
 		game.kill_feed.pop_front()
+	if game.nm and game.net_host:
+		game.nm.ev("feed", ["%s was defeated%s" % [b.name, (" by " + killer.display_name) if killer != null else ""], game.actors.find(killer), -1])
 	if game.autotest:
 		print("BOSS_DOWN t=%.0f %s by %s" % [game.match_time, b.name, killer.display_name if killer != null else "-"])
 	game.stats["bosses_slain"] = game.stats.get("bosses_slain", 0) + 1

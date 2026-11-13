@@ -55,7 +55,11 @@ func setup(game: Node) -> void:
 	var again := MenuUI.button("Play again", 24, Vector2(240, 58))
 	again.pressed.connect(func() -> void: get_tree().change_scene_to_file("res://scenes/game.tscn"))
 	row.add_child(again)
+	if game.net_active:
+		again.visible = false                                  # a party goes back to the lobby together
 	var menu := MenuUI.button("Main menu", 24, Vector2(240, 58))
 	menu.pressed.connect(func() -> void: get_tree().change_scene_to_file("res://scenes/menu.tscn"))
+	if game.net_active:
+		menu.text = "Back to lobby"
 	row.add_child(menu)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
