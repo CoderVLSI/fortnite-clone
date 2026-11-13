@@ -87,7 +87,7 @@ func _physics_process(_delta: float) -> void:
 			return
 		if tick % SNAP_EVERY == 0:
 			_send_snapshot()
-		if tick % 6 == 0:
+		if tick % 12 == 0:
 			for a in game.humans:
 				if a.peer_id > 1:
 					_send_priv(a)
@@ -101,7 +101,8 @@ func _physics_process(_delta: float) -> void:
 		if tick % 2 == 0 and not fx_q.is_empty():
 			var q := fx_q
 			fx_q = []
-			rpc("_r_fx", q)
+			for k in range(0, q.size(), 10):                   # small packets: under the MTU
+				rpc("_r_fx", q.slice(k, k + 10))
 	else:
 		if tick % INPUT_EVERY == 0 and got_snap:
 			rpc_id(1, "_r_input", _pack_input(game.player))
@@ -114,25 +115,33 @@ func _process(_d: float) -> void:
 
 # ----------------------------------------------------------------------------- snapshots (host -> clients)
 
+const CHUNK := 24                        # actors per packet: a packet stays under the ~1400 byte MTU (no IP fragmentation on Wi-Fi)
+
+
 func _send_snapshot() -> void:
-	var s := StreamPeerBuffer.new()
 	var st: Storm = game.storm
-	s.put_float(game.match_time)
-	s.put_float(game.warmup_left)
-	s.put_u8(game.alive_count())
-	s.put_u8((1 if st.active else 0) | (2 if st.shrinking else 0) | (4 if st.done else 0) | (8 if game.over else 0))
-	s.put_u8(st.phase)
-	s.put_float(st.timer)
-	s.put_float(st.center.x)
-	s.put_float(st.center.y)
-	s.put_float(st.radius)
-	s.put_float(st.next_center.x)
-	s.put_float(st.next_center.y)
-	s.put_float(st.next_radius)
-	s.put_u16(all.size())
-	for a in all:
-		_pack_actor(s, a)
-	rpc("_r_snap", s.data_array)
+	var i := 0
+	while i < all.size():
+		var s := StreamPeerBuffer.new()
+		s.put_float(game.match_time)
+		s.put_float(game.warmup_left)
+		s.put_u8(game.alive_count())
+		s.put_u8((1 if st.active else 0) | (2 if st.shrinking else 0) | (4 if st.done else 0) | (8 if game.over else 0))
+		s.put_u8(st.phase)
+		s.put_float(st.timer)
+		s.put_float(st.center.x)
+		s.put_float(st.center.y)
+		s.put_float(st.radius)
+		s.put_float(st.next_center.x)
+		s.put_float(st.next_center.y)
+		s.put_float(st.next_radius)
+		var n := mini(CHUNK, all.size() - i)
+		s.put_u16(i)
+		s.put_u16(n)
+		for k in n:
+			_pack_actor(s, all[i + k])
+		rpc("_r_snap", s.data_array)
+		i += n
 
 
 @rpc("authority", "unreliable_ordered")
@@ -155,16 +164,18 @@ func _r_snap(data: PackedByteArray) -> void:
 	h["nc"] = Vector2(s.get_float(), s.get_float())
 	h["nr"] = s.get_float()
 	snap = h
+	var first := s.get_u16()
 	var n := s.get_u16()
 	var now := Time.get_ticks_msec() / 1000.0
-	for i in n:
+	for k in n:
 		var e := _unpack_actor(s)
 		e["at"] = now
-		var b: Array = bufs.get(i, [])
+		var idx := first + k
+		var b: Array = bufs.get(idx, [])
 		b.append(e)
 		if b.size() > 10:
 			b.pop_front()
-		bufs[i] = b
+		bufs[idx] = b
 	_apply_header(h)
 
 
@@ -432,7 +443,7 @@ func _send_priv(a: Actor) -> void:
 	rpc_id(a.peer_id, "_r_priv", d)
 
 
-@rpc("authority", "unreliable_ordered")
+@rpc("authority", "reliable")                  # reliable: it can exceed one packet (five slots of items)
 func _r_priv(d: Dictionary) -> void:
 	var a: Actor = game.player
 	var sig_before := "%d|%s|%s" % [a.active, a.build_piece, str(a.item().get("id", "") if a.item() != null else "")]

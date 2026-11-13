@@ -12,6 +12,7 @@ var passes := 0
 var spot := Vector3.ZERO
 var bot_idx := 0
 var start_t := 0.0
+var shot_dir := ""
 
 
 func setup(g: Node) -> void:
@@ -19,6 +20,9 @@ func setup(g: Node) -> void:
 	nm = g.nm
 	host = g.net_host
 	start_t = Time.get_ticks_msec() / 1000.0
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--net-shot="):
+			shot_dir = a.get_slice("=", 1)
 	g.controller.set_physics_process(false)          # the test drives the inputs itself
 	g.controller.set_process_unhandled_input(false)
 	if host:
@@ -36,12 +40,15 @@ func check(name: String, ok: bool, detail := "") -> void:
 		fails += 1
 
 
+var slow := DisplayServer.get_name() != "headless"      # a software renderer: everything takes several times longer
+
+
 func wait(sec: float) -> void:
-	await get_tree().create_timer(sec).timeout
+	await get_tree().create_timer(sec * (4.0 if slow else 1.0)).timeout
 
 
 func until(cond: Callable, timeout: float) -> bool:
-	var end := Time.get_ticks_msec() + int(timeout * 1000.0)
+	var end := Time.get_ticks_msec() + int(timeout * (8.0 if slow else 1.0) * 1000.0)
 	while Time.get_ticks_msec() < end:
 		if cond.call():
 			return true
@@ -52,6 +59,17 @@ func until(cond: Callable, timeout: float) -> bool:
 func got(k: String, timeout := 20.0) -> Variant:
 	await until(func() -> bool: return nm.test_in.has(k), timeout)
 	return nm.test_in.get(k)
+
+
+func shot(nm_: String) -> void:
+	## --net-shot=<dir>: save what this side sees (needs a real renderer: run under xvfb).
+	if shot_dir == "" or DisplayServer.get_name() == "headless":
+		return
+	DirAccess.make_dir_recursive_absolute(shot_dir)
+	await wait(0.5)
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(shot_dir.path_join(nm_ + ".png"))
+	print("SHOT ", nm_)
 
 
 func world_hash() -> String:
@@ -172,7 +190,12 @@ func _run_host() -> void:
 	check("the client's shot damaged a bot on the host", hurt, "hp %.0f -> %.0f" % [hp0, bot.hp])
 	var dn = await got("dmgnum", 8.0)
 	check("(client) got a damage number", int(dn) > 0, str(dn))
-	# building
+	# building (the host's own character stands beside the client for the screenshot)
+	me.state = Actor.State.GROUND
+	me.global_position = cl.global_position + Vector3(-3.0, 0.3, 2.5)
+	game.controller.yaw = 0.35
+	game.controller.pitch = -0.15
+	me.aim_yaw = 0.35
 	cl.mats["wood"] = 200
 	await wait(0.3)
 	nm.test_send("build", 1)
@@ -185,6 +208,7 @@ func _run_host() -> void:
 	var seen = await got("wall_seen", 8.0)
 	check("(client) sees the wall under the same id", int(seen) == wid, "host id=%d client=%s" % [wid, str(seen)])
 	var we = game.structures.by_id.get(wid)
+	await shot("net_host")
 	game.structures.destroy(we)
 	await wait(0.6)
 	check("the host broke it: gone on the host", we.dead and not game.structures.by_id.has(wid))
@@ -304,6 +328,7 @@ func _run_client() -> void:
 		wid = int(S.pieces[k].id)
 	var hid = await got("wall_id", 8.0)
 	check("the wall exists on the client with the host's id", S.by_id.has(int(hid)) and S.by_id[int(hid)].kind == "build" and S.by_id[int(hid)].owner == me, "id=%s" % str(hid))
+	await shot("net_client")
 	nm.test_send("wall_seen", wid)
 	var broken = await got("wall_broken", 10.0)
 	await until(func() -> bool: return not S.by_id.has(int(broken)), 4.0)
