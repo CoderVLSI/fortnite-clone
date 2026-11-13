@@ -45,6 +45,7 @@ var shot_times := [5.0, 22.0, 45.0, 70.0, 100.0, 125.0, 160.0]
 var shot_i := 0
 var structures: Structures
 var events: WorldEvents
+var bosses: Bosses                        # the three bosses and their keycard vaults (bosses.gd)
 var buildtest := false
 var movetest := false
 var poses := false
@@ -434,6 +435,9 @@ func _setup_actors() -> void:
 	add_child(controller)
 	controller.setup(self, player, demo)
 	_setup_npcs()
+	bosses = Bosses.new()
+	add_child(bosses)
+	bosses.setup(self)
 
 
 # ----------------------------------------------------------------------------- frame
@@ -652,6 +656,8 @@ func on_damage_dealt(attacker: Actor, victim: Actor, amount: float, at: Vector3,
 	stats.damage += amount
 	if attacker == player:
 		player_damage += amount
+	if victim.is_boss:
+		bosses.note_damage(victim, attacker)
 	if attacker == player and attacker != victim:
 		sfx("hit_marker", Vector3.INF)
 	if attacker == player and hud:
@@ -673,6 +679,9 @@ func _record_career() -> void:
 
 
 func on_eliminated(victim: Actor, killer: Actor) -> void:
+	if victim.is_boss:                                   # a boss is not a player: loot, keycard and a notice, no placement
+		bosses.boss_died(victim, killer)
+		return
 	if victim.is_npc:                                    # a hired character is not a player: no placement
 		if hired == victim:
 			hired = null
@@ -736,6 +745,21 @@ func spawn_pickup(it: Dictionary, pos: Vector3) -> void:
 		bm.material = m
 		mi.mesh = bm
 		model.add_child(mi)
+	elif Items.def(it).kind == "keycard":
+		color = Items.def(it).color
+		model = Node3D.new()
+		var card := MeshInstance3D.new()
+		var cbm := BoxMesh.new()
+		cbm.size = Vector3(0.5, 0.04, 0.32)
+		var cm := StandardMaterial3D.new()
+		cm.albedo_color = color
+		cm.emission_enabled = true
+		cm.emission = color
+		cm.emission_energy_multiplier = 0.8
+		cbm.material = cm
+		card.mesh = cbm
+		card.rotation.x = 0.35
+		model.add_child(card)
 	else:
 		color = Items.RARITY_COLORS[it.rarity]
 		model = Models.make(Items.def(it).asset)
@@ -823,7 +847,7 @@ func nearest_container(pos: Vector3, max_dist: float) -> Variant:
 	var best = null
 	var bd := max_dist * max_dist
 	for c in containers:
-		if c.opened:
+		if c.opened or c.get("locked", false):
 			continue
 		var d := pos.distance_squared_to(c.pos)
 		if d < bd:
@@ -833,7 +857,7 @@ func nearest_container(pos: Vector3, max_dist: float) -> Variant:
 
 
 func open_container(c: Dictionary, _by: Actor) -> void:
-	if c.opened or warming_up():
+	if c.opened or c.get("locked", false) or warming_up():
 		return
 	c.opened = true
 	sfx("chest_open", c.pos)
@@ -848,11 +872,14 @@ func open_container(c: Dictionary, _by: Actor) -> void:
 	var drops: Array = []
 	match c.kind:
 		"chest":
-			var w := Items.roll_weapon(rng, 0.08)
-			drops = [w, {"ammo": Items.def(w).ammo}, {"ammo": Items.AMMO_TYPES[rng.randi() % 5]}]
-			if rng.randf() < 0.7:
-				drops.append(Items.roll_heal(rng, true))
-			drops.append({"gold": 20 + rng.randi() % 26})
+			if c.has("vault"):                                 # a golden vault chest
+				drops = bosses.vault_drops(rng)
+			else:
+				var w := Items.roll_weapon(rng, 0.08)
+				drops = [w, {"ammo": Items.def(w).ammo}, {"ammo": Items.AMMO_TYPES[rng.randi() % 5]}]
+				if rng.randf() < 0.7:
+					drops.append(Items.roll_heal(rng, true))
+				drops.append({"gold": 20 + rng.randi() % 26})
 		"ammo_box":
 			drops = [{"ammo": Items.AMMO_TYPES[rng.randi() % 4]}, {"ammo": Items.AMMO_TYPES[rng.randi() % 5]}]
 		"supply_drop":
@@ -912,7 +939,7 @@ func explode(pos: Vector3, pr: Dictionary) -> void:
 	if pr.kind == "orb":
 		shock_burst(pos, pr)
 		return
-	for a in actors:
+	for a: Actor in actors + bosses.alive_actors():
 		if not a.alive() or a.state == Actor.State.BLIMP:
 			continue
 		var d := (a.global_position + Vector3(0, 0.9, 0)).distance_to(pos)
@@ -1039,7 +1066,7 @@ func shock_burst(pos: Vector3, pr: Dictionary) -> void:
 	## The shockwave: small damage and a big launch (the launch pad's launch(), plus sideways push) for every actor in
 	## the radius, yourself included, and heavy damage to built structures. No fall damage from the knock.
 	var radius: float = pr.radius
-	for a in actors:
+	for a: Actor in actors + bosses.alive_actors():
 		if not a.alive() or a.state == Actor.State.BLIMP:
 			continue
 		var c := a.global_position + Vector3(0, 0.9, 0)

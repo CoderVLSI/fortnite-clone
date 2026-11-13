@@ -400,6 +400,10 @@ func tip_lines(it: Dictionary) -> Array:
 			L.append(["Takes %.1f s to use" % d.use_time, dim])
 		"launcher":
 			L.append(["Place on the ground to launch", dim])
+		"keycard":
+			var lair: String = {"weaver": "Frostpeak", "ravage": "Sandbar Depot", "tinker": "Gearworks Yard"}.get(d.vault, "")
+			L.append(["Opens the vault at %s, once" % lair, d.color])
+			L.append(["Walk up to the vault door and press E", dim])
 	if d.has("stack"):
 		L.append(["Stack %d / %d" % [it.count, d.stack], dim])
 	return L

@@ -93,6 +93,229 @@ func use_frames() -> int:
 	return n
 
 
+func _bosses_section() -> void:
+	var T = game.terrain
+	var E: WorldEvents = game.events
+	# ---------------------------------------------------------------- named places, bosses and keycard vaults
+	var B: Bosses = game.bosses
+	var want_names := ["Oakmoor Village", "Gearworks Yard", "Hayfield Farm", "Mirror Lake", "Frostpeak", "Sunscorch", "Sandbar Depot",
+			"Willow Hamlet", "Gull Cove", "Red Mesas"]
+	var have_names: Array = E.poi_names()
+	var all_named := have_names.size() == 10
+	for nm in want_names:
+		all_named = all_named and have_names.has(nm)
+	check("all 10 places have names", all_named, str(have_names))
+	check("a place is found from its centre", E.poi_at(T.village) == "Oakmoor Village" and E.poi_at(T.east_cove) == "Gull Cove" and E.poi_at(Vector2(T.mesas[2][0])) == "Red Mesas")
+	E.poi_current = ""
+	E.poi_banner = {}
+	a.state = Actor.State.SKYDIVE
+	a.global_position = Vector3(T.snow_town.x, 200.0, T.snow_town.y)
+	await frames(14)
+	check("no banner while skydiving over a place", E.poi_banner.is_empty() and E.poi_current == "")
+	await put(E._dry_spot(T.snow_town + Vector2(3, 3)) + Vector3(0, 0.1, 0))
+	await frames(14)
+	check("walking into Frostpeak shows its banner with the boss named", E.poi_banner.get("name", "") == "Frostpeak" and String(E.poi_banner.get("sub", "")).contains("Weaver"), str(E.poi_banner))
+	# bosses
+	check("three bosses stand guard, one vault each", B.list.size() == 3 and B.vaults.size() == 3)
+	var alive0: int = game.alive_count()
+	for b in B.list:
+		var act: Actor = b.actor
+		var lair: Vector2 = T.get(Bosses.SPEC[b.id].lair)
+		var lair_d := Vector2(act.global_position.x, act.global_position.z).distance_to(lair)
+		check("%s guards its lair" % b.name, lair_d < 55.0 and act.is_boss and act.alive(), "%.0f m from the centre" % lair_d)
+		check("%s has boss health" % b.name, act.hp > 100.0 and act.shield > 0.0, "%.0f + %.0f" % [act.hp, act.shield])
+		check("%s is not one of the players" % b.name, not game.actors.has(act))
+	var players_alive := 0
+	for o in game.actors:
+		players_alive += 1 if o.alive() else 0
+	check("bosses are not counted as alive players", alive0 == players_alive and B.alive_actors().size() == 3, "%d players, %d bosses" % [alive0, B.alive_actors().size()])
+	var storm: Storm = game.storm
+	if not storm.active:
+		storm.start()
+	var sv := [storm.active, storm.center, storm.radius, storm.tick]
+	storm.active = true
+	storm.center = Vector2(3000, 3000)
+	storm.radius = 20.0
+	storm.tick = 0.95
+	var bot1: Actor = game.actors[1]
+	var bot_hp: float = bot1.hp
+	var bot_state: int = bot1.state
+	bot1.state = Actor.State.GROUND                     # (a bot still on the blimp is not hurt)
+	var boss_hps: Array = []
+	for b in B.list:
+		boss_hps.append(b.actor.hp + b.actor.shield)
+	await frames(20)
+	var unhurt := true
+	for i in B.list.size():
+		unhurt = unhurt and absf(B.list[i].actor.hp + B.list[i].actor.shield - float(boss_hps[i])) < 0.01
+	check("the storm does not touch a boss (and does hurt a bot)", unhurt and bot1.hp < bot_hp, "bot %.0f -> %.0f" % [bot_hp, bot1.hp])
+	bot1.state = bot_state as Actor.State
+	storm.active = sv[0]
+	storm.center = sv[1]
+	storm.radius = sv[2]
+	storm.tick = sv[3]
+	bot1.hp = 100.0
+	# a boss fights back when a player comes close
+	var tink: Dictionary = B.list[2]
+	var ta: Actor = tink.actor
+	var tbrain: Node = ta.get_child(ta.get_child_count() - 1)
+	var tdir := Vector3(-sin(ta.aim_yaw), 0, -cos(ta.aim_yaw))
+	await put(ta.global_position + tdir * 16.0 + Vector3(0, 0.2, 0), ta.aim_yaw + PI)
+	ta.process_mode = Node.PROCESS_MODE_INHERIT
+	a.hp = 99999.0
+	a.shield = 0.0
+	await frames(300)
+	check("a boss fights a player who comes within its reach", tbrain.mode == "fight" and a.hp < 99999.0, "mode %s, damage %.0f" % [tbrain.mode, 99999.0 - a.hp])
+	ta.process_mode = Node.PROCESS_MODE_DISABLED
+	a.hp = 100.0
+	# bots keep clear of bosses unless well equipped
+	var bbrain: Node = bot1.get_child(bot1.get_child_count() - 1)
+	var old_pos := bot1.global_position
+	bot1.global_position = ta.global_position + Vector3(20, 0, 0)
+	for i in Items.SLOTS:
+		bot1.slots[i] = null
+	bot1.slots[0] = Items.make("assault_rifle", 1)
+	bot1.shield = 100.0
+	check("a poorly armed bot avoids a boss", not bbrain._engages(ta))
+	bot1.slots[0] = Items.make("assault_rifle", 4)
+	bot1.shield = 0.0
+	check("a bot with no shield avoids a boss", not bbrain._engages(ta))
+	bot1.shield = 75.0
+	check("a bot with a shield and a legendary gun takes it on", bbrain._engages(ta))
+	bot1.global_position = old_pos
+	for i in Items.SLOTS:
+		bot1.slots[i] = null
+	bot1.shield = 0.0
+	# screenshots: each boss at its lair, bar showing
+	for b in B.list:
+		var ba: Actor = b.actor
+		var spot := Vector3.INF
+		for dist in [7.0, 9.0, 11.0]:
+			for k in 16:
+				var ang: float = ba.aim_yaw + k * TAU / 16.0
+				var dirv := Vector3(-sin(ang), 0, -cos(ang))
+				var p: Vector3 = ba.global_position + dirv * dist
+				p.y = T.height(p.x, p.z) + 0.2
+				var cam: Vector3 = p + dirv * 4.6 + Vector3(0, 1.9, 0)
+				if spot == Vector3.INF and game.nav.walkable(p) and game.can_see(p + Vector3(0, 1.5, 0), ba.eye()) and game.can_see(cam, ba.eye()):
+					spot = p
+		if spot == Vector3.INF:
+			spot = ba.global_position + Vector3(0, 0, 9.0)
+		await put(spot)
+		var dd: Vector3 = ba.global_position - a.global_position
+		var yaw := atan2(-dd.x, -dd.z)
+		a.aim_yaw = yaw
+		ba.shield -= 120.0                                # (not hit(): a boss that is shot at builds cover)
+		B.note_damage(ba, a)
+		ba.process_mode = Node.PROCESS_MODE_INHERIT       # awake, so it is drawn and animated (it notices us, too)
+		a.hp = 99999.0
+		await frames(12)
+		a.aim_yaw = yaw
+		await snap("boss_" + b.id, yaw, -0.05)
+		ba.process_mode = Node.PROCESS_MODE_DISABLED
+		a.hp = 100.0
+	# killing a boss: gold, its keycard and its gear drop; the alive count does not move
+	var weaver: Dictionary = B.list[0]
+	var wa: Actor = weaver.actor
+	var alive1: int = game.alive_count()
+	wa.hit(9000.0, a, true, Vector3.ZERO)
+	await frames(3)
+	var card_pk = null
+	var gold_ok := false
+	for pk in game.pickups:
+		if pk.item.get("id", "") == "keycard_weaver":
+			card_pk = pk
+		if pk.item.has("gold") and int(pk.item.gold) == 150:
+			gold_ok = true
+	check("a defeated boss is dead and drops about 150 gold", not wa.alive() and gold_ok)
+	check("a defeated boss drops its keycard", card_pk != null)
+	var gear_ok := false
+	for pk in game.pickups:
+		if pk.item.has("id") and Items.def(pk.item).kind == "weapon" and int(pk.item.rarity) == 4 and pk.pos.distance_to(wa.global_position) < 4.0:
+			gear_ok = true
+	check("and its legendary gear", gear_ok)
+	check("a dead boss leaves the alive count alone", game.alive_count() == alive1 and not weaver.alive)
+	# vaults
+	var v: Dictionary = B.vaults["weaver"]
+	for i in Items.SLOTS:
+		a.slots[i] = null
+	a.active = -1
+	await put(card_pk.pos + Vector3(0, 0.1, 0))
+	await frames(70)
+	check("walking over the keycard picks it up", a.find_item("keycard_weaver") >= 0)
+	var face_yaw := atan2(-(v.pos.x - v.front.x), -(v.pos.z - v.front.z))
+	var back_off: Vector3 = (v.front - v.pos)
+	back_off.y = 0.0
+	await put(v.front + back_off.normalized() * 1.6 + Vector3(0, 0.2, 0), face_yaw)
+	var door_cell: Vector3 = (v.root as Node3D).global_transform * Vector3(0, 0.5, 2.75)
+	check("the vault door is blocked on the bots' grid", not game.nav.walkable(door_cell))
+	check("the vault is noticed from its door", B.vault_near(a) == v)
+	check("the wrong keycard does not open a vault", not B.open_vault(B.vaults["ravage"], a) and not B.vaults["ravage"].opened)
+	var carried: int = a.find_item("keycard_weaver")
+	a.slots[carried] = null
+	check("the vault door stays shut without the keycard", not B.open_vault(v, a) and not v.opened and not (v.door_shape as CollisionShape3D).disabled)
+	var locked_chest: Dictionary = v.chests[0]
+	game.open_container(locked_chest, a)
+	check("the golden chests are locked behind the door", not locked_chest.opened and game.nearest_container(locked_chest.pos, 2.0) == null)
+	a.slots[carried] = Items.make("keycard_weaver")
+	await frames(10)
+	await snap("vault_door_locked", face_yaw, -0.1)
+	check("the matching keycard opens it and is used up", B.open_vault(v, a) and v.opened and a.find_item("keycard_weaver") < 0)
+	await frames(90)
+	check("the door slides open and stops blocking", (v.door as Node3D).position.x > 2.5 and (v.door_shape as CollisionShape3D).disabled)
+	check("the bots' grid opens with the door", game.nav.walkable(door_cell))
+	await snap("vault_door_open", face_yaw, -0.1)
+	var epic_all := true
+	var chest_n := 0
+	for c in v.chests:
+		var n0: int = game.pickups.size()
+		game.open_container(c, a)
+		var epic := false
+		var gold100 := false
+		for k in range(n0, game.pickups.size()):
+			var it: Dictionary = game.pickups[k].item
+			if it.has("id") and Items.def(it).kind == "weapon" and int(it.rarity) >= 3:
+				epic = true
+			if it.has("gold") and int(it.gold) == 100:
+				gold100 = true
+		epic_all = epic_all and epic and gold100 and c.opened
+		chest_n += 1
+	check("all three vault chests give an epic or better gun and 100 gold", epic_all and chest_n == 3)
+	# a bot that holds a keycard heads for its vault
+	var rv: Dictionary = B.vaults["ravage"]
+	bot1.slots[0] = Items.make("keycard_ravage")
+	bot1.global_position = rv.front + Vector3(25, 0.3, 0)
+	bbrain.target = null
+	bbrain.has_goal = false
+	var storm_was: bool = game.storm.active
+	game.storm.active = false                           # (the storm comes first in a bot's mind)
+	bbrain._decide()
+	game.storm.active = storm_was
+	check("a bot carrying a keycard heads for its vault", bbrain.mode == "vault" and bbrain.goal.distance_to(rv.front) < 1.0, "mode %s" % bbrain.mode)
+	bot1.global_position = old_pos
+	bot1.slots[0] = null
+	bbrain.has_goal = false
+	# the walls stand against pickaxe, bullets and blasts
+	var wall_pos: Vector3 = (v.root as Node3D).global_transform * Vector3(-3.75, 2.0, 0.0)
+	var outside_pos: Vector3 = (v.root as Node3D).global_transform * Vector3(-9.0, 2.0, 0.0)
+	var wall_hit: Dictionary = game.ray(outside_pos, wall_pos, null, 1)
+	var destroyed0: int = game.structures.destroyed
+	var hit_back = null
+	if not wall_hit.is_empty():
+		hit_back = game.structures.damage_at(wall_hit.collider, wall_hit.get("shape", 0), 9999.0, a, wall_hit.position)
+		game.structures.pickaxe_hit(a, wall_hit)
+	game.structures.explode(wall_pos, 12.0, 99999.0, a)
+	await frames(10)
+	var wall_ok: bool = not wall_hit.is_empty() and wall_hit.collider == v.body and hit_back == null and game.structures.lookup(v.body, 0) == null
+	check("vault walls cannot be damaged by bullets, the pickaxe or explosions", wall_ok and v.root.is_inside_tree() and (v.root as Node3D).visible and not game.nav.walkable(wall_pos),
+			"hit %s, collider is vault %s, hit_back %s, destroyed %d->%d, cell walkable %s" % [not wall_hit.is_empty(), not wall_hit.is_empty() and wall_hit.collider == v.body, hit_back, destroyed0, game.structures.destroyed, game.nav.walkable(wall_pos)])
+	await put(E._dry_spot(T.desert_town) + Vector3(0, 0.1, 0))
+	await frames(14)
+	game.controller.show_map = true
+	await snap("map_pois", 0.0, 0.0)
+	game.controller.show_map = false
+
+
 func _ready() -> void:
 	await frames(5)
 	a = game.player
@@ -100,6 +323,14 @@ func _ready() -> void:
 	for o in game.actors:
 		if o != a:
 			o.process_mode = Node.PROCESS_MODE_DISABLED
+	for b in game.bosses.list:                          # the bosses stand still unless a test wakes them
+		b.actor.process_mode = Node.PROCESS_MODE_DISABLED
+	if OS.get_cmdline_user_args().has("--bossshots"):            # only the boss and vault checks (and their screenshots)
+		await _bosses_section()
+		print("EVENTTEST\n" + "\n".join(lines))
+		print("EVENTTEST %s  (%d checks, %d failed)" % ["OK" if fails == 0 else "FAILED", lines.size(), fails])
+		get_tree().quit()
+		return
 	var T = game.terrain
 	var E: WorldEvents = game.events
 	var base: Vector3 = E._dry_spot(T.village + Vector2(20, 8))
@@ -733,6 +964,7 @@ func _ready() -> void:
 	npc.die(game.actors[1])
 	await frames(2)
 	check("a fallen hire is not a player: the count stays", game.hired == null and game.alive_count() == before_alive)
+	await _bosses_section()
 	print("EVENTTEST\n" + "\n".join(lines))
 	print("EVENTTEST %s  (%d checks, %d failed)" % ["OK" if fails == 0 else "FAILED", lines.size(), fails])
 	get_tree().quit()
