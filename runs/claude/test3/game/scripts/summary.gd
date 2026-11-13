@@ -22,10 +22,16 @@ func setup(game: Node) -> void:
 	col.add_theme_constant_override("separation", 12)
 	panel.add_child(col)
 	var p: Actor = game.player
-	var won: bool = game.winner == p
-	col.add_child(MenuUI.label("LAST ONE STANDING" if won else "MATCH OVER", 44, MenuUI.ACCENT if won else MenuUI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-	col.add_child(MenuUI.label("#%d of %d" % [p.placement, game.actors.size()], 72, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER))
-	if not won and game.winner:
+	var mate: Actor = game.partner_of(p)
+	var won: bool = game.winner != null and game.same_team(game.winner, p)
+	if mate != null:
+		col.add_child(MenuUI.label("VICTORY" if won else "MATCH OVER", 44, MenuUI.ACCENT if won else MenuUI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+		col.add_child(MenuUI.label("#%d of %d teams" % [p.placement, game.actors.size() - game.duo_teams.size()], 72, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER))
+		col.add_child(MenuUI.label("%s  %d elims   ·   %s  %d elims" % [p.display_name, p.kills, mate.display_name, mate.kills], 22, MenuUI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+	else:
+		col.add_child(MenuUI.label("LAST ONE STANDING" if won else "MATCH OVER", 44, MenuUI.ACCENT if won else MenuUI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+		col.add_child(MenuUI.label("#%d of %d" % [p.placement, game.actors.size()], 72, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER))
+	if not won and game.winner and mate == null:
 		col.add_child(MenuUI.label("%s won the match" % game.winner.display_name, 20, MenuUI.DIM, HORIZONTAL_ALIGNMENT_CENTER))
 	col.add_child(MenuUI.spacer(6))
 	var grid := GridContainer.new()

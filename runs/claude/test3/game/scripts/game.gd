@@ -63,6 +63,8 @@ var audio: GameAudio
 var profile := false                     # --profile: print frame-time monitors every 10 s
 const WARMUP := 20.0                     # the warm-up before the blimp: everyone on the island, nothing counts yet
 var warmup_left := 0.0
+var duos := false                        # Duos: teams of two (Settings.mode, or --duos); see setup_duo()
+var duo_teams: Array = []                # each entry [Actor, Actor]
 var difficulty := "normal"               # bot difficulty: easy / normal / sweaty (Settings, or --difficulty=)
 
 
@@ -90,6 +92,8 @@ func _ready() -> void:
 			shots_dir = a.get_slice("=", 1)
 			demo = true
 			Engine.max_physics_steps_per_frame = 90          # keep game time real even when frames are slow
+	var mode_v = settings_node.get("mode") if settings_node else null
+	duos = (mode_v == "duos" and not demo) or OS.get_cmdline_user_args().has("--duos")
 	rng.seed = seed_v
 	terrain = Terrain.new()
 	island = load("res://scenes/island.tscn").instantiate()
@@ -434,6 +438,8 @@ func _setup_actors() -> void:
 	controller = preload("res://scripts/player.gd").new()
 	add_child(controller)
 	controller.setup(self, player, demo)
+	if duos:
+		setup_duo(player, actors[1])                   # queued alone: a bot from the field is the teammate (networked play calls setup_duo with two humans)
 	_setup_npcs()
 	bosses = Bosses.new()
 	add_child(bosses)
@@ -558,6 +564,111 @@ func _process(_d: float) -> void:
 			get_tree().quit()
 
 
+# ----------------------------------------------------------------------------- teams (Duos)
+
+func same_team(a: Actor, b: Actor) -> bool:
+	return a != null and b != null and a.team == b.team
+
+
+func partner_of(a: Actor) -> Actor:
+	## The other member of a's duo, or null.
+	for t in duo_teams:
+		if t[0] == a:
+			return t[1]
+		if t[1] == a:
+			return t[0]
+	return null
+
+
+func setup_duo(a1: Actor, a2: Actor) -> void:
+	## Put two actors on one team. A bot a2 gets the teammate brain (follow, loot, fight, revive) around a1.
+	a2.team = a1.team
+	duo_teams.append([a1, a2])
+	duos = true
+	for c in a2.get_children():
+		if c.get("buddy") != null:
+			c.ally_of = a1
+			c.buddy = true
+			c.mode = "follow"
+
+
+func can_knock(a: Actor) -> bool:
+	## Knocked instead of eliminated: only when a teammate is still up.
+	var m := partner_of(a)
+	return m != null and m.up() and not a.is_boss and not a.is_npc
+
+
+func on_knocked(victim: Actor, attacker: Actor) -> void:
+	var by: Actor = attacker if attacker != null and attacker != victim else null
+	kill_feed.append({"text": ("%s was knocked by %s" % [victim.display_name, by.display_name]) if by else ("%s was knocked" % victim.display_name),
+			"time": match_time, "mine": by == player or same_team(victim, player)})
+	if kill_feed.size() > 6:
+		kill_feed.pop_front()
+	if victim == player:
+		announce("KNOCKED - hold on!")
+
+
+func try_revive(a: Actor, held := true, ctrl: Node = null) -> bool:
+	## Start or continue reviving the nearest knocked teammate (call every physics tick while the revive key is held).
+	## Returns true when the interact key is consumed: reviving, a knocked teammate in reach, or `a` itself knocked.
+	if a.knocked:
+		a.revive_t = 0.0
+		a.revive_target = null
+		return true
+	var m := partner_of(a)
+	var delta := get_physics_process_delta_time()
+	if m == null or not m.knocked or not a.up() or a.state != Actor.State.GROUND or a.global_position.distance_to(m.global_position) > Actor.REVIVE_RANGE:
+		a.revive_t = 0.0
+		a.revive_target = null
+		return false
+	if ctrl != null:
+		ctrl.prompt = "%s Revive %s" % [ctrl._key_hint(), m.display_name]
+	var grace := float(a.get_meta("revive_grace", 0.0))
+	if ctrl != null and ctrl.touch != null and held:
+		grace = 0.4
+	elif not held and grace > 0.0:
+		held = true
+	a.set_meta("revive_grace", maxf(grace - delta, 0.0))
+	if not held:
+		a.revive_t = 0.0
+		a.revive_target = null
+		return false
+	if a.revive_target != m:
+		a.revive_t = 0.0
+	a.revive_target = m
+	a.revive_t += delta
+	m.revived_at = match_time
+	if a.revive_t >= Actor.REVIVE_TIME:
+		a.revive_t = 0.0
+		a.revive_target = null
+		m.revive()
+		kill_feed.append({"text": "%s revived %s" % [a.display_name, m.display_name], "time": match_time, "mine": same_team(a, player)})
+		sfx("use_heal", m.global_position)
+	return true
+
+
+func teams_alive() -> int:
+	var seen := {}
+	for a in actors:
+		if a.alive():
+			seen[a.team] = true
+	return seen.size()
+
+
+func _team_has_up(team: int) -> bool:
+	for a in actors:
+		if a.team == team and a.up():
+			return true
+	return false
+
+
+func _team_has_alive(team: int) -> bool:
+	for a in actors:
+		if a.team == team and a.alive():
+			return true
+	return false
+
+
 func alive_count() -> int:
 	var n := 0
 	for a in actors:
@@ -587,18 +698,21 @@ func _check_win() -> void:
 				print("  BOT %s pos=(%.0f,%.1f,%.0f) goal=(%.0f,%.1f,%.0f) has_goal=%s path=%d i=%d vel=%.1f floor=%s mode=%s" % [a.display_name, a.global_position.x, a.global_position.y,
 						a.global_position.z, br.goal.x, br.goal.y, br.goal.z, br.has_goal, br.path.size(), br.path_i, a.velocity.length(), a.is_on_floor(), br.mode])
 		print("T=%d alive=%d landed=%d armed=%d pickups_left=%d modes=%s storm r=%.0f" % [int(match_time), n, landed, armed, pickups.size(), modes, storm.radius])
-	if n <= 1:
+	if teams_alive() <= 1:
 		over = true
 		over_time = match_time
-		if player.alive():
-			player_survived = match_time
-			sfx("victory", Vector3.INF)
-			player.placement = 1
-			_record_career()
 		for a in actors:
 			if a.alive():
 				winner = a
-				a.placement = 1
+		if winner != null:
+			for a in actors:
+				if a.team == winner.team:
+					a.placement = 1
+		if player.alive():
+			player_survived = match_time
+		if player.placement == 1:
+			sfx("victory", Vector3.INF)
+			_record_career()
 		var armed_ever := 0
 		for a in actors:
 			armed_ever += 1 if a.ever_armed else 0
@@ -687,9 +801,13 @@ func on_eliminated(victim: Actor, killer: Actor) -> void:
 			hired = null
 		kill_feed.append({"text": "%s has fallen" % victim.display_name, "time": match_time, "mine": true})
 		return
-	victim.placement = alive_count() + 1
+	if not _team_has_alive(victim.team):                 # the whole team is out: they all place behind the teams still in
+		for m in actors:
+			if m.team == victim.team:
+				m.placement = teams_alive() + 1
 	if victim == player:
 		player_survived = match_time
+	if player.placement > 0:
 		_record_career()
 	var cause := "killed" if (killer != null and killer != victim) else ("storm" if storm.outside(victim.global_position) > 0.0 else "other")
 	stats["deaths_" + cause] = stats.get("deaths_" + cause, 0) + 1
@@ -709,6 +827,10 @@ func on_eliminated(victim: Actor, killer: Actor) -> void:
 		kill_feed.pop_front()
 	if killer == player and victim != player:
 		sfx("elimination", Vector3.INF)
+	# a knocked teammate with nobody left up goes down with them
+	for m in actors:
+		if m != victim and m.team == victim.team and m.knocked and not _team_has_up(victim.team):
+			m.die(killer)
 	if victim == player:
 		controller.on_player_eliminated(killer)
 	elif killer != null and killer != player and killer.alive() and rng.randf() < 0.35:
@@ -817,7 +939,7 @@ func _update_pickups(delta: float) -> void:
 	if pick_tick % 6 != 0:
 		return
 	for a in actors:
-		if not a.alive() or a.state != Actor.State.GROUND:
+		if not a.alive() or a.knocked or a.state != Actor.State.GROUND:
 			continue
 		for p in pickups.duplicate():
 			if match_time - p.born < 0.6 or a.global_position.distance_squared_to(p.pos) > 2.9:
@@ -943,7 +1065,7 @@ func explode(pos: Vector3, pr: Dictionary) -> void:
 		if not a.alive() or a.state == Actor.State.BLIMP:
 			continue
 		var d := (a.global_position + Vector3(0, 0.9, 0)).distance_to(pos)
-		if d < pr.radius and can_see(pos + Vector3(0, 0.3, 0), a.eye()):
+		if d < pr.radius and (a == pr.owner or not same_team(a, pr.owner)) and can_see(pos + Vector3(0, 0.3, 0), a.eye()):
 			var dmg: float = pr.damage * clampf(1.15 - d / pr.radius, 0.2, 1.0) * (0.5 if a == pr.owner else 1.0)
 			a.hit(dmg, pr.owner, false, pos)
 			on_damage_dealt(pr.owner, a, dmg, a.eye())
@@ -1071,7 +1193,7 @@ func shock_burst(pos: Vector3, pr: Dictionary) -> void:
 			continue
 		var c := a.global_position + Vector3(0, 0.9, 0)
 		var d := c.distance_to(pos)
-		if d >= radius or not can_see(pos + Vector3(0, 0.4, 0), a.eye()):
+		if d >= radius or (a != pr.owner and same_team(a, pr.owner)) or not can_see(pos + Vector3(0, 0.4, 0), a.eye()):
 			continue
 		var fall := clampf(1.15 - d / radius, 0.45, 1.0)
 		if a != pr.owner:
