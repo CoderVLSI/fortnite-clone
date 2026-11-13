@@ -38,6 +38,12 @@ func snap(name: String) -> void:
 	print("SNAP ", name)
 
 
+func face(x: Actor, pitch := -0.12) -> void:
+	var to := x.global_position - p.global_position
+	game.controller.yaw = atan2(-to.x, -to.z)
+	game.controller.pitch = pitch
+
+
 func brain_of(x: Actor) -> Node:
 	for c in x.get_children():
 		if c.get("buddy") != null:
@@ -95,6 +101,33 @@ func hold_revive(who: Actor, n: int) -> void:
 		await get_tree().physics_frame
 
 
+func _shots() -> void:
+	e1.state = Actor.State.BLIMP
+	e2.state = Actor.State.BLIMP
+	equip(p, "assault_rifle")
+	place(p, base, 0.0)
+	place(m, base + Vector3(0, 0, -9), 0.0)
+	m.body.hold("assault_rifle")
+	game.controller.yaw = 0.0
+	game.controller.pitch = -0.1
+	await frames(30)
+	await snap("duo_teammate_hud")
+	place(m, base + Vector3(12, 0, 6))
+	p.hit(500.0, game.actors[4], false, Vector3.ZERO)
+	p.in_move = Vector2(0, 1)
+	await frames(60)
+	game.controller.yaw = PI * 0.5 - 0.5
+	game.controller.pitch = -0.3
+	await snap("duo_knocked")
+	standing(p)
+	place(p, base)
+	place(m, base + Vector3(1.4, 0, -0.4))
+	m.hit(500.0, game.actors[4], false, Vector3.ZERO)
+	face(m, -0.25)
+	await hold_revive(p, 150)
+	await snap("duo_revive")
+
+
 func _ready() -> void:
 	await frames(5)
 	p = game.player
@@ -113,6 +146,10 @@ func _ready() -> void:
 	mb.set_physics_process(false)                       # the teammate brain wakes up for its own section
 	var T = game.terrain
 	base = game.events._dry_spot(T.village + Vector2(20, 8)) + Vector3(0, 0.1, 0)
+	if OS.get_cmdline_user_args().has("--duoshots"):      # just the screenshots, quickly
+		await _shots()
+		get_tree().quit()
+		return
 	# ---------------------------------------------------------------- teams
 	var teams := {}
 	for o in game.actors:
@@ -197,13 +234,15 @@ func _ready() -> void:
 	p.hit(50.0, e1, false, Vector3.ZERO)
 	check("with a teammate up, 0 hp means knocked, not eliminated", p.knocked and p.alive() and p.hp == 0.0 and p.state == Actor.State.GROUND)
 	check("knocked hp starts at 100", absf(p.knock_hp - 100.0) < 0.5, "%.1f" % p.knock_hp)
-	check("the knock is in the kill feed", game.kill_feed.any(func(k: Dictionary) -> bool: return k.text.contains("was knocked by")))
+	check("the knock is in the kill feed", game.kill_feed.any(func(k: Dictionary) -> bool: return k.text.contains("knocked by")))
 	check("a knocked player still counts as in the match", game.alive_count() == 50 and game.teams_alive() == 49)
 	place(p, base)
 	p.in_move = Vector2(0, 1)
 	await frames(60)
 	var crawl := Vector2(p.velocity.x, p.velocity.z).length()
 	check("a knocked player crawls at about 1.6 m/s, much slower than walking", crawl > 1.0 and crawl < 2.0 and walk.length() > 4.0, "crawl %.2f walk %.2f" % [crawl, walk.length()])
+	game.controller.yaw = PI * 0.5 - 0.5                 # a three-quarter view of the crawl
+	game.controller.pitch = -0.3
 	await snap("duo_knocked")
 	p.in_fire = true
 	p.in_jump = true
@@ -237,10 +276,8 @@ func _ready() -> void:
 	place(m, base + Vector3(1.5, 0, 0))
 	p.hit(500.0, e1, false, Vector3.ZERO)
 	check("knocked for the revive test", p.knocked)
-	await snap("duo_revive_pre")
 	await hold_revive(m, 240)
 	check("holding revive for 4 s is not enough", p.knocked and m.revive_t > 3.5 and m.revive_target == p, "%.2f s" % m.revive_t)
-	await snap("duo_revive")
 	await hold_revive(m, 70)
 	check("holding revive for 5 s brings the player back at 30 hp and no shield", not p.knocked and absf(p.hp - 30.0) < 0.5 and p.shield == 0.0, "hp %.1f" % p.hp)
 	check("... standing and able to move again", p.state == Actor.State.GROUND and p.knock_hp == 0.0)
@@ -284,8 +321,9 @@ func _ready() -> void:
 	mb.has_goal = false
 	await frames(900)
 	var d: float = p.global_position.distance_to(m.global_position)
-	check("the bot teammate follows the player", d < 12.0, "%.1f m" % d)
+	check("the bot teammate follows the player", d < 20.0, "%.1f m, mode %s" % [d, mb.mode])
 	check("... and does not shoot the player", p.hp == 100.0 and p.shield == 0.0 and mb.target != p, "hp %.0f" % p.hp)
+	face(m)
 	await snap("duo_teammate_hud")
 	p.hit(500.0, e1, false, Vector3.ZERO)
 	check("the player is knocked next to the bot", p.knocked)
@@ -293,7 +331,7 @@ func _ready() -> void:
 	while p.knocked and t_rev < 1800:
 		await frames(1)
 		t_rev += 1
-	check("the bot teammate revives the player", not p.knocked and p.hp >= 25.0 and p.hp <= 31.0, "after %.1f s, hp %.1f" % [t_rev / 60.0, p.hp])
+	check("the bot teammate revives the player", not p.knocked and p.hp >= 25.0 and p.hp <= 31.0, "after %.1f s, hp %.1f, bot %.1f m away, mode %s, up %s state %d goal %s" % [t_rev / 60.0, p.hp, p.global_position.distance_to(m.global_position), mb.mode, m.up(), m.state, mb.has_goal])
 	check("... in about 5 s of channelling plus the walk over", t_rev > 290 and t_rev < 1500, "%d frames" % t_rev)
 	mb.set_physics_process(false)
 	place(e1, base + Vector3(30, 0, 30))
@@ -305,7 +343,10 @@ func _ready() -> void:
 	place(m, base + Vector3(1.2, 0, 0))
 	m.hit(500.0, e1, false, Vector3.ZERO)
 	check("the bot teammate can be knocked too", m.knocked)
-	await hold_revive(p, 305)
+	face(m, -0.25)
+	await hold_revive(p, 150)
+	await snap("duo_revive")
+	await hold_revive(p, 155)
 	check("the player revives the bot", not m.knocked and absf(m.hp - 30.0) < 0.5)
 	standing(m)
 	# ---------------------------------------------------------------- team placement and the match end

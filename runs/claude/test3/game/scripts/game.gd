@@ -606,12 +606,11 @@ func can_knock(a: Actor) -> bool:
 
 func on_knocked(victim: Actor, attacker: Actor) -> void:
 	var by: Actor = attacker if attacker != null and attacker != victim else null
-	kill_feed.append({"text": ("%s was knocked by %s" % [victim.display_name, by.display_name]) if by else ("%s was knocked" % victim.display_name),
+	var verb := "were" if victim == player else "was"
+	kill_feed.append({"text": ("%s %s knocked by %s" % [victim.display_name, verb, by.display_name]) if by else ("%s %s knocked" % [victim.display_name, verb]),
 			"time": match_time, "mine": by == player or same_team(victim, player)})
 	if kill_feed.size() > 6:
 		kill_feed.pop_front()
-	if victim == player:
-		announce("KNOCKED - hold on!")
 
 
 func try_revive(a: Actor, held := true, ctrl: Node = null) -> bool:

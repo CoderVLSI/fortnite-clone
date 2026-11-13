@@ -535,7 +535,7 @@ func _wanted_pickup(max_d: float, armed: bool, low: Array) -> Variant:
 		var d := a.global_position.distance_squared_to(p.pos)
 		if d > lim or junk.has(p.item) or not _worth(p.item) or _avoided(p.pos) or not _reachable(p.pos):
 			continue
-		if buddy and p.pos.distance_to(ally_of.global_position) > 30.0:
+		if buddy and p.pos.distance_to(ally_of.global_position) > 20.0:
 			continue                                   # a teammate only loots near the partner
 		if p.pos.y - game.terrain.height(p.pos.x, p.pos.z) > 1.6 or not _storm_allows(p.pos):
 			continue
