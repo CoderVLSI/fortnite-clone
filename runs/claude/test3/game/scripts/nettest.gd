@@ -170,7 +170,7 @@ func _run_host() -> void:
 	check("the client picked the item up (host side)", picked, str(cl.slots))
 	nm.test_send("slot", cl.find_item("assault_rifle"))
 	var cslot = await got("cslot")
-	check("host and client agree on the slot", int(cslot) == cl.find_item("assault_rifle") and int(cslot) >= 0, "client=%s host=%d" % [str(cslot), cl.find_item("assault_rifle")])
+	check("host and client agree on the slot", cslot != null and int(cslot) == cl.find_item("assault_rifle") and int(cslot) >= 0, "client=%s host=%d" % [str(cslot), cl.find_item("assault_rifle")])
 	# the client shoots a bot
 	await until(func() -> bool: return cl.state == Actor.State.GROUND, 8.0)
 	_freeze_bots()
@@ -189,7 +189,7 @@ func _run_host() -> void:
 	var hurt := await until(func() -> bool: return bot.hp < hp0, 8.0)
 	check("the client's shot damaged a bot on the host", hurt, "hp %.0f -> %.0f" % [hp0, bot.hp])
 	var dn = await got("dmgnum", 8.0)
-	check("(client) got a damage number", int(dn) > 0, str(dn))
+	check("(client) got a damage number", int(dn if dn != null else 0) > 0, str(dn))
 	# building (the host's own character stands beside the client for the screenshot)
 	me.state = Actor.State.GROUND
 	me.global_position = cl.global_position + Vector3(-3.0, 0.3, 2.5)
@@ -206,14 +206,15 @@ func _run_host() -> void:
 	check("the client built a wall (host side)", built and game.structures.pieces.size() >= 1, "pieces=%d" % game.structures.pieces.size())
 	nm.test_send("wall_id", wid)
 	var seen = await got("wall_seen", 8.0)
-	check("(client) sees the wall under the same id", int(seen) == wid, "host id=%d client=%s" % [wid, str(seen)])
+	check("(client) sees the wall under the same id", seen != null and int(seen) == wid, "host id=%d client=%s" % [wid, str(seen)])
 	var we = game.structures.by_id.get(wid)
 	await shot("net_host")
 	game.structures.destroy(we)
 	await wait(0.6)
 	check("the host broke it: gone on the host", we.dead and not game.structures.by_id.has(wid))
 	nm.test_send("wall_broken", wid)
-	check("(client) the wall is gone there too", int(await got("wall_gone", 8.0)) == 1)
+	var wg = await got("wall_gone", 8.0)
+	check("(client) the wall is gone there too", wg != null and int(wg) == 1)
 	# a chest
 	var ci := -1
 	for i in game.containers.size():
@@ -222,20 +223,22 @@ func _run_host() -> void:
 			break
 	game.open_container(game.containers[ci], me)
 	nm.test_send("chest", ci)
-	check("(client) the chest the host opened is open there", int(await got("chest_open", 8.0)) == 1)
+	var co = await got("chest_open", 8.0)
+	check("(client) the chest the host opened is open there", co != null and int(co) == 1)
 	# storm and alive count
 	game.storm.start()
 	await wait(1.0)
 	nm.test_send("storm", [game.storm.radius, game.alive_count(), game.storm.active])
 	var sres = await got("storm_ok", 8.0)
-	check("storm radius, activity and alive count match", int(sres) == 1)
+	check("storm radius, activity and alive count match", sres != null and int(sres) == 1)
 	# elimination
 	var killer: Actor = me
 	cl.hp = 1.0
 	cl.hit(50.0, killer, false, killer.global_position)
 	await wait(1.0)
 	check("the client is eliminated on the host", not cl.alive() and cl.placement >= 2, "placement=%d" % cl.placement)
-	check("(client) saw its elimination and placement", int(await got("elim_ok", 8.0)) == 1)
+	var eo = await got("elim_ok", 8.0)
+	check("(client) saw its elimination and placement", eo != null and int(eo) == 1)
 	# the match ends: every bot falls, the host is the last one standing
 	for i in range(2, game.actors.size()):
 		var b: Actor = game.actors[i]
@@ -243,7 +246,8 @@ func _run_host() -> void:
 			b.die(null)
 	await wait(1.0)
 	check("match over on the host", game.over and game.winner == me)
-	check("(client) match over reached the client", int(await got("over_ok", 8.0)) == 1)
+	var oo = await got("over_ok", 8.0)
+	check("(client) match over reached the client", oo != null and int(oo) == 1)
 	nm.test_send("done", 1)
 	_finish()
 
