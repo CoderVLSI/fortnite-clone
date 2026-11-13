@@ -37,6 +37,11 @@ func snap(name: String, yaw: float, pitch: float) -> void:
 
 func put(p: Vector3, yaw := 0.0) -> void:
 	a.mantle_t = -1.0
+	a.hurdle_t = -1.0
+	a.in_tsprint = false
+	a.tsprint_k = 0.0
+	a.tsprint_block = false
+	a.in_fire = false
 	a.sliding = false
 	a.set_crouched(false)
 	a.state = Actor.State.GROUND
@@ -157,9 +162,90 @@ func _ready() -> void:
 		check("slide speeds up downhill", hill_peak > peak + 0.8, "peak %.1f m/s downhill vs %.1f on the flat (%.1f m drop over 12 m)" % [hill_peak, peak, best.drop])
 		a.in_move = Vector2.ZERO
 		await frames(30)
+	# ---------------------------------------------------------------- tactical sprint
+	await put(base, PI)
+	a.add_item(Items.make("pistol", 1))
+	a.select(a.find_item("pistol"))
+	var pis = a.item()
+	a.in_move = Vector2(0, 1)
+	a.in_sprint = true
+	await frames(60)
+	var run_v := hspeed()
+	a.in_tsprint = true
+	await frames(10)
+	var early_v := hspeed()
+	await frames(50)
+	var ts_v := hspeed()
+	check("tactical sprint is faster than the normal run", a.tsprint and ts_v > run_v + 1.2 and ts_v > Actor.SPRINT + 1.2, "%.1f m/s vs %.1f running" % [ts_v, run_v])
+	check("tactical sprint winds up", early_v < ts_v - 0.1 and a.tsprint_k > 0.95, "%.1f m/s after 0.17 s" % early_v)
+	var loaded0: int = pis.loaded
+	a.in_fire = true
+	a._combat(0.016)
+	check("no firing during a tactical sprint", pis.loaded == loaded0 and a.fire_cd <= 0.0, "%d rounds" % pis.loaded)
+	await frames(3)
+	check("firing ends the tactical sprint", not a.tsprint and pis.loaded < loaded0)
+	a.in_fire = false
+	await frames(30)
+	check("it stays off until Shift is released", not a.tsprint)
+	a.in_tsprint = false
+	await frames(3)
+	a.in_tsprint = true
+	await frames(40)
+	check("releasing and pressing Shift starts it again", a.tsprint)
+	a.in_crouch = true
+	await frames(2)
+	var ts_slide := 0.0
+	var tt := 0
+	while a.sliding and tt < 120:
+		ts_slide = maxf(ts_slide, hspeed())
+		await frames(1)
+		tt += 1
+	check("sliding out of a tactical sprint carries the extra speed", ts_slide > peak + 0.5, "peak %.1f m/s vs %.1f from a normal sprint" % [ts_slide, peak])
+	a.in_tsprint = false
+	a.in_move = Vector2.ZERO
+	await frames(60)
+	# ---------------------------------------------------------------- hurdle
+	var hrow := ground(T.village.x - 17.0, T.village.y - 24.0)
+	for spec in [[1.0, 0.5, true, "a 1 m crate"], [1.0, 2.6, false, "a 2.6 m thick block (mantles instead)"], [1.6, 0.5, false, "a 1.6 m wall (too high)"]]:
+		await put(hrow + Vector3(0, 0, 8.0), 0.0)
+		box(hrow + Vector3(0, -0.4, 2.0), Vector3(3.0, spec[0] + 0.4, spec[1]))
+		await frames(4)
+		a.in_move = Vector2(0, 1)
+		a.in_sprint = true
+		var before := 0.0
+		var z_box := hrow.z + 2.0
+		for i in 200:
+			await frames(1)
+			if a.global_position.z - z_box < spec[1] / 2.0 + 1.0:
+				break
+		before = hspeed()
+		a.in_jump = true
+		var vaulted := false
+		var pk_y := a.global_position.y
+		for i in 90:
+			await frames(1)
+			if a.hurdle_t >= 0.0:
+				vaulted = true
+				pk_y = maxf(pk_y, a.global_position.y)
+				if spec[2] and a.hurdle_t > a.hurdle_dur * 0.4 and a.hurdle_t < a.hurdle_dur * 0.4 + 0.03:
+					await snap("move_06_hurdle", PI * 0.7, -0.15)
+			if vaulted and a.hurdle_t < 0.0 and i > 4:
+				break
+		await frames(6)
+		var after := hspeed()
+		var beyond: bool = a.global_position.z < z_box - spec[1] / 2.0 + 0.1
+		if spec[2]:
+			check("hurdles " + spec[3] + " and lands on the far side", vaulted and beyond and absf(a.global_position.y - hrow.y) < 0.4, "z %.2f vs box %.2f, feet %.2f above the start" % [a.global_position.z, z_box, a.global_position.y - hrow.y])
+			check("a hurdle keeps its speed", after > before * 0.7, "%.1f m/s after, %.1f before" % [after, before])
+			check("the vault clears the top", pk_y > hrow.y + spec[0] + 0.15, "peak %.2f m over a %.1f m box" % [pk_y - hrow.y, spec[0]])
+		else:
+			check("does not hurdle " + spec[3], not vaulted)
+		a.in_move = Vector2.ZERO
+		boxes.pop_back().queue_free()
+		hrow += Vector3(7, 0, 0)
 	# ---------------------------------------------------------------- mantle
 	var row := ground(T.village.x - 24.0, T.village.y - 8.0)
-	for spec in [[1.5, true, "1.5 m ledge"], [0.9, true, "0.9 m ledge"], [2.2, true, "2.2 m ledge"], [3.0, false, "3.0 m wall (too high)"]]:
+	for spec in [[1.5, true, "1.5 m ledge"], [1.8, true, "1.8 m box"], [0.9, true, "0.9 m ledge"], [2.2, true, "2.2 m ledge"], [3.0, false, "3.0 m wall (too high)"]]:
 		await put(row, 0.0)
 		box(row + Vector3(0, -0.3, -2.2), Vector3(2.4, spec[0] + 0.3, 2.4))
 		await frames(4)
@@ -167,11 +253,20 @@ func _ready() -> void:
 		await frames(10)
 		a.in_jump = true
 		var mantled := false
+		var mantle_exit := 0.0
+		var was_m := false
 		for i in 70:
 			await frames(1)
+			if was_m and a.mantle_t < 0.0:
+				mantle_exit = hspeed()
+				was_m = false
 			if a.mantle_t >= 0.0:
 				mantled = true
-				a.in_move = Vector2.ZERO               # stop on top instead of running off the far side
+				was_m = true
+				if spec[0] != 1.8:
+					a.in_move = Vector2.ZERO           # stop on top instead of running off the far side
+			if spec[0] == 1.8 and mantle_exit > 0.0:
+				a.in_move = Vector2.ZERO
 		var on_top := absf(a.global_position.y - (row.y + spec[0])) < 0.35
 		if spec[1]:
 			check("mantles a " + spec[2], mantled and on_top, "feet %.2f m above the base" % (a.global_position.y - row.y))
@@ -179,6 +274,8 @@ func _ready() -> void:
 			check("does not mantle a " + spec[2], not mantled and not on_top)
 		if spec[0] == 1.5:
 			await snap("move_01_mantle", PI * 0.75, -0.3)
+		if spec[0] == 1.8:
+			check("a mantle keeps forward momentum", mantle_exit > 2.5, "%.1f m/s leaving the mantle" % mantle_exit)
 		a.in_move = Vector2.ZERO
 		boxes.pop_back().queue_free()
 		row += Vector3(6, 0, 0)
