@@ -13,7 +13,8 @@ const CHUNKS := 8                      # the terrain mesh is split so only what 
 const REACH := 375.0                   # how far out from the centre things get scattered
 const ASSETS := ["grenade", "bushes", "rocks", "farm_props", "ammo_box", "medkit", "shield_potion", "chest", "pistol", "shotgun",
 		"assault_rifle", "sniper_rifle", "rocket_launcher", "supply_drop", "trees", "modular_kit", "lookout_tower", "warehouse",
-		"house", "pickaxe", "drop_vehicle", "smg", "tactical_shotgun", "burst_rifle", "hunting_rifle", "upgrade_bench"]
+		"house", "pickaxe", "drop_vehicle", "smg", "tactical_shotgun", "burst_rifle", "hunting_rifle", "upgrade_bench",
+		"web_shooters", "ravage_grasp", "charge_shotgun", "shockwave_launcher"]
 
 var T: Terrain
 var rng := RandomNumberGenerator.new()

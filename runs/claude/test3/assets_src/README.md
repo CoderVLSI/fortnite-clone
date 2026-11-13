@@ -19,3 +19,21 @@ The .glb files are copied into `runs/claude/test3/game/assets/`.
 `upgrade_bench/` - the workbench in every town where weapons are upgraded with gold: plank top with metal corner caps,
 a vise, an anvil, a pegboard with tools, a tray of gold bars, a glowing gold strip along the front and an arrow sign.
 1,380 triangles, 1.8 m wide. Origin on the floor at the middle, working side facing -Y (+Z in Godot).
+
+## Mythic weapons
+
+Four boss weapons, built like the guns above (headless `bpy`, helpers in `runs/claude/common/`; barrel along -Y, origin at the grip,
+every mesh object named `mythic_<weapon>_*` because the level build stores meshes as `res://meshes/<mesh node name>.res`).
+Build one with `python runs/claude/test3/assets_src/<id>/build_<id>.py`, copy the `.glb` into `runs/claude/test3/game/assets/`,
+and run `scripts/build_island.gd` (the ids are in its `ASSETS`) to write the colour-converted `meshes/*.res` and `meshes/mat_<id>_*.tres`.
+
+| Asset | Look | Triangles | Size (m) |
+|---|---|---|---|
+| `web_shooters` | pair of red-and-blue wrist launchers, white bands, twin nozzles, spider emblems, glowing cartridges | 1,404 | 0.36 long |
+| `ravage_grasp` | dark red organic gauntlet: black palm, writhing tendrils, bone spikes, ember core | 1,176 | 0.71 long |
+| `charge_shotgun` | scrap-metal double barrel, rust plates and rivets, yellow coil around a glowing cyan core | 1,812 | 0.77 long |
+| `shockwave_launcher` | boxy slate launcher, yellow hazard bands, flared reflector bell, blue-white emitter | 1,124 | 0.74 long |
+
+Their inventory icons (`textures/icons/<id>.png`) are renders of these models with an outline, made by
+`runs/claude/test3/game/tools/gen_mythic_icons.py` (Blender render + PIL, no image model). The three new sounds
+(`charge_up`, `web_thwip`, `tendril_lash`) are synthesised with ffmpeg `aevalsrc`.

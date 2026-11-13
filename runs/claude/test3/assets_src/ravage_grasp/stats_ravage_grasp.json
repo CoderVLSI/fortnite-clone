@@ -1,0 +1,36 @@
+{
+ "asset": "ravage_grasp",
+ "triangles": 1176,
+ "budget": 6000,
+ "per_object": {
+  "mythic_grasp_body": 576,
+  "mythic_grasp_tendrils": 308,
+  "mythic_grasp_spikes": 128,
+  "mythic_grasp_core": 20,
+  "mythic_grasp_grip": 144
+ },
+ "dimensions_m": [
+  0.2559,
+  0.7076,
+  0.2925
+ ],
+ "min": [
+  -0.1279,
+  -0.4207,
+  -0.1
+ ],
+ "max": [
+  0.128,
+  0.2869,
+  0.1925
+ ],
+ "objects": 5,
+ "materials": [
+  "mat_grasp_black",
+  "mat_grasp_bone",
+  "mat_grasp_ember",
+  "mat_grasp_flesh",
+  "mat_grasp_flesh_dark"
+ ],
+ "problems": []
+}
