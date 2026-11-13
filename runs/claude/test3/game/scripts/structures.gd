@@ -238,7 +238,7 @@ func explode(pos: Vector3, radius: float, amount: float, attacker: Actor) -> voi
 	q.transform = Transform3D(Basis.IDENTITY, pos)
 	q.collision_mask = 1
 	var hit := {}
-	for r in get_world_3d().direct_space_state.intersect_shape(q, 96):
+	for r in get_world_3d().direct_space_state.intersect_shape(q, 384):        # dense fences and crops can fill a small cap before the built pieces
 		var e = lookup(r.collider, r.shape)
 		if e == null or hit.has(e.id):
 			continue

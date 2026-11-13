@@ -46,6 +46,8 @@ func put(p: Vector3, yaw := 0.0) -> void:
 	a.aim_pitch = 0.0
 	a.in_move = Vector2.ZERO
 	a.fall_start = p.y
+	if a.alive():
+		a.hp = maxf(a.hp, 100.0)                       # the storm closes in over this long test: keep the player standing
 	await frames(6)
 
 
