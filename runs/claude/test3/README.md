@@ -20,6 +20,7 @@ runs/claude/test3/
 | **Warm-up** | A 20 s warm-up on the island before the bus: no damage, looting or building. It can be skipped in Settings. |
 | **Drop** | A blimp crosses the island for 50 s. Skydive, then **E** deploys the glider (an on-screen prompt shows the key). |
 | **Island** | 800 m, chunked terrain, rivers, towns, mesas, snow in the north and desert in the south. Minimap (900 m) and a full map on **M**. |
+| **LAN play** | Play with someone on the same Wi-Fi (PC or Android). One player presses HOST A GAME on the lobby's party card, the other presses FIND GAMES (or types the host's IP, shown on the host's screen) and joins; the host presses PLAY and both land in the same match with 48 bots. In Duos the two of you are the team. The host runs the match; the other device sends its input and shows the host's world. |
 | **Solo / Duos** | Switch in the lobby. In Duos you get a teammate (a bot fills in when you queue alone): no friendly fire, their health and a marker on your HUD and map. At 0 hp you are knocked instead of out: crawl and bleed out for 30 s while your teammate holds E for 5 s to revive you (back at 30 hp). The team wins when it is the last one standing. |
 | **Bosses and vaults** | Three bosses guard their own named locations: **Weaver** (web-slinger) at Frostpeak, **Ravage** (tendril creature) at Sandbar Depot, **Tinker** (mech pilot) at Gearworks Yard. Each has a boss health bar and drops its mythic weapons, gold and a **keycard** that opens the vault beside the lair, which holds three golden chests of top loot. |
 | **Mythic weapons** | Weaver's Web Shooters (swing on web lines), Ravage's Grasp (yank and slam an enemy, or pull yourself to a wall), Tinker's Charge Shotgun (hold to charge, up to 2x damage) and Tinker's Shockwave Launcher (launches players, wrecks builds). They only come from bosses. |
@@ -98,6 +99,7 @@ godot --headless --path game -s scripts/flowtest.gd
 | eventtest | 151 | Consumables, pads, zips, rifts, supply drops, spare ammo, auto material, walking out of houses, house collapse and loot fall, gold, benches, reloads, hiring, mythic weapons, bosses, keycards, vaults, named places |
 | invtest | 22 | Inventory screen |
 | duotest | 55 | Teams, no friendly fire, knock, bleed-out, revive, bot teammate, team placement and win |
+| nettest | 35 / 47 | Two processes (`tools/nettest.sh`, `EXTRA=--nettest-duos` for Duos): connect, same world, movement, bots, blimp, pickups, shooting, building, chests, storm, elimination, match end; plus team, knock and revive both ways in Duos |
 | flowtest | 22 | Menu → lobby → warm-up → match → summary → play again → pause → leave |
 
 ## How it was built
