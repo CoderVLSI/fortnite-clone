@@ -1320,10 +1320,10 @@ func _use_mythic(delta: float, dist: float, visible: bool) -> void:
 	if dist > float(Items.def(it).get("range", 40.0)):
 		return
 	if it.id == "charge_shotgun":
-		charge_t += delta                          # a full charge takes 1 s: hold a little longer, release, wait
-		if charge_t < 1.08:
+		charge_t += delta                          # a half charge (a full one would one-shot), then a long breather
+		if charge_t < 0.5:
 			a.in_fire = true
-		elif charge_t > 1.6:
+		elif charge_t > 2.2:
 			charge_t = 0.0
 		return
 	a.in_fire = true
@@ -1362,4 +1362,4 @@ func _boss_specials(dist: float, visible: bool) -> void:
 			swing_next = now + 2.0
 	elif boss_id == "ravage" and a.has_method("grasp_at") and now >= grasp_next and dist > 8.0 and dist < 30.0:
 		a.grasp_at(target)
-		grasp_next = now + 7.0
+		grasp_next = now + 12.0

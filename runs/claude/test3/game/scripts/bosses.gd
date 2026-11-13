@@ -11,17 +11,17 @@ extends Node3D
 const ORDER := ["weaver", "ravage", "tinker"]
 const SPEC := {
 	"weaver": {"name": "Weaver", "lair": "snow_town", "poi": "Frostpeak", "angle": 0.3, "body": "Xbot", "outfit": Color(0.04, 0.05, 0.07),
-		"accent": Color(0.1, 0.85, 0.78), "scale": 1.0, "hp": 600.0, "shield": 300.0, "mythics": ["web_shooters"], "guns": [["smg", 4]],
+		"accent": Color(0.1, 0.85, 0.78), "scale": 1.0, "hp": 300.0, "shield": 150.0, "mythics": ["web_shooters"], "guns": [["smg", 3]],
 		"card": "keycard_weaver", "plate": Color(0.35, 1.0, 0.9)},
 	"ravage": {"name": "Ravage", "lair": "depot", "poi": "Sandbar Depot", "angle": 2.4, "body": "Soldier", "outfit": Color(0.5, 0.03, 0.04),
-		"accent": Color(0.05, 0.02, 0.02), "scale": 1.3, "hp": 600.0, "shield": 300.0, "mythics": ["ravage_grasp"], "guns": [["shotgun", 4]],
+		"accent": Color(0.05, 0.02, 0.02), "scale": 1.3, "hp": 300.0, "shield": 150.0, "mythics": ["ravage_grasp"], "guns": [["shotgun", 3]],
 		"card": "keycard_ravage", "plate": Color(1.0, 0.35, 0.3)},
 	"tinker": {"name": "Tinker", "lair": "yard", "poi": "Gearworks Yard", "angle": 4.4, "body": "Xbot", "outfit": Color(0.78, 0.36, 0.1),
-		"accent": Color(0.55, 0.6, 0.66), "scale": 1.15, "hp": 600.0, "shield": 300.0, "mythics": ["charge_shotgun", "shockwave_launcher"], "guns": [],
+		"accent": Color(0.55, 0.6, 0.66), "scale": 1.15, "hp": 300.0, "shield": 150.0, "mythics": ["charge_shotgun", "shockwave_launcher"], "guns": [],
 		"card": "keycard_tinker", "plate": Color(1.0, 0.7, 0.3)},
 }
 const LEASH := 45.0                      # how far from the lair a boss strays
-const AGGRO := 35.0
+const AGGRO := 28.0                       # how close you can get before a boss notices you
 const BAR_RANGE := 60.0
 const VAULT_W := 8.0                     # the vault: 8 wide (x) by 6 deep (z) by 4 high, door on the +z side
 const VAULT_D := 6.0
@@ -190,7 +190,7 @@ func _spawn_boss(id: String, v: Dictionary) -> void:
 	for t in Items.AMMO_TYPES:
 		a.ammo[t] = 400
 	for t in Structures.MATS:
-		a.mats[t] = 150
+		a.mats[t] = 40                                # a few cover walls, not a fortress
 	var fallback := false
 	for m in spec.mythics:
 		if Items.DEFS.has(m):
@@ -201,7 +201,7 @@ func _spawn_boss(id: String, v: Dictionary) -> void:
 		if Items.DEFS.has(gd[0]):
 			a.add_item(Items.make(gd[0], gd[1]))
 	if fallback:
-		a.add_item(Items.make("assault_rifle", 4))
+		a.add_item(Items.make("assault_rifle", 3))
 	_dress(a, id)
 	var plate := Label3D.new()
 	plate.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -214,8 +214,8 @@ func _spawn_boss(id: String, v: Dictionary) -> void:
 	a.add_child(plate)
 	var brain := preload("res://scripts/bot.gd").new()
 	a.add_child(brain)
-	brain.setup(game, a, 0.95)
-	a.spread_mul = 0.85
+	brain.setup(game, a, 0.5)                      # a fair fight: average reactions, not a sniper
+	a.spread_mul = 1.5
 	brain.mode = "boss"
 	brain.boss_home = home
 	brain.boss_id = id
