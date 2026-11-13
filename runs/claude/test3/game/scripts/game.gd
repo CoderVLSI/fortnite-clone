@@ -64,11 +64,28 @@ var profile := false                     # --profile: print frame-time monitors 
 const WARMUP := 20.0                     # the warm-up before the blimp: everyone on the island, nothing counts yet
 var warmup_left := 0.0
 var difficulty := "normal"               # bot difficulty: easy / normal / sweaty (Settings, or --difficulty=)
+# LAN multiplayer (net.gd / net_match.gd). All false and unused in a single-player match.
+var net_active := false                  # a network session is running this match
+var net_host := false
+var net_client := false                  # this process only shows what the host sends: no damage, pickups or world changes
+var nm: Node                             # NetMatch: snapshots, inputs, commands and events (net_match.gd)
+var netsvc: Node                         # the Net autoload
+var my_idx := 0                          # index in `actors` of the human at this keyboard
+var humans: Array = []                   # Actors of all human players (net matches)
+var net_waiting := false                 # host: waiting for every client to finish loading
+var nettest := ""                        # --nettest-host / --nettest-client
+var warmup_len := 20.0
 
 
 func _ready() -> void:
 	var seed_v := int(Time.get_unix_time_from_system())
 	var settings_node := get_node_or_null("/root/Settings")
+	netsvc = get_node_or_null("/root/Net")
+	if netsvc and netsvc.is_active() and netsvc.match_info.has("seed"):
+		net_active = true
+		net_host = netsvc.is_host()
+		net_client = not net_host
+		seed_v = int(netsvc.match_info.seed)
 	var saved = settings_node.get("bot_difficulty") if settings_node else null
 	if saved is String and saved in ["easy", "normal", "sweaty"]:
 		difficulty = saved
@@ -90,6 +107,11 @@ func _ready() -> void:
 			shots_dir = a.get_slice("=", 1)
 			demo = true
 			Engine.max_physics_steps_per_frame = 90          # keep game time real even when frames are slow
+	for a in OS.get_cmdline_user_args():
+		if a == "--nettest-host" or a == "--nettest-client": nettest = a
+		if a.begins_with("--net-warmup="): warmup_len = float(a.get_slice("=", 1))
+	if net_active:
+		difficulty = String(netsvc.match_info.get("difficulty", difficulty))
 	rng.seed = seed_v
 	terrain = Terrain.new()
 	island = load("res://scenes/island.tscn").instantiate()
@@ -142,6 +164,10 @@ func _ready() -> void:
 		var ct := preload("res://scripts/crosshairtest.gd").new()
 		add_child(ct)
 		ct.setup(self)
+	if nettest != "" and net_active:
+		var nt := preload("res://scripts/nettest.gd").new()
+		add_child(nt)
+		nt.setup(self)
 	if eventtest:
 		var et := preload("res://scripts/eventtest.gd").new()
 		add_child(et)
@@ -380,13 +406,14 @@ func npc_near(a: Actor) -> Variant:
 	return null
 
 
-func hire_npc(n: Actor) -> bool:
+func hire_npc(n: Actor, buyer: Actor = null) -> bool:
 	## The player pays and the character joins them: a gun, ammo, a shield and a bot brain that fights on their side.
+	var who: Actor = buyer if buyer != null else player
 	var brain: Node = n.get_node("NpcBrain")
 	var cost: int = brain.info.cost
-	if hired != null or warming_up() or player.gold < cost or not n.alive():
+	if hired != null or warming_up() or who.gold < cost or not n.alive():
 		return false
-	player.gold -= cost
+	who.gold -= cost
 	brain.plate.text = "%s
 your ally" % brain.info.name
 	brain.plate.modulate = Color(0.45, 1.0, 0.5)
@@ -399,8 +426,10 @@ your ally" % brain.info.name
 	var bot := preload("res://scripts/bot.gd").new()
 	n.add_child(bot)
 	bot.setup(self, n, 0.75)
-	bot.ally_of = player
+	bot.ally_of = who
 	bot.mode = "follow"
+	if nm and net_host:
+		nm.ev("npc_hired", [npcs.find(n)])
 	announce("%s joins you!" % brain.info.name)
 	sfx("chest_open", n.global_position)
 	return true
@@ -409,21 +438,37 @@ your ally" % brain.info.name
 func _setup_actors() -> void:
 	var colors := [Color(0.85, 0.3, 0.25), Color(0.25, 0.55, 0.85), Color(0.3, 0.7, 0.4), Color(0.85, 0.65, 0.2), Color(0.6, 0.35, 0.8),
 			Color(0.2, 0.7, 0.7), Color(0.85, 0.45, 0.65), Color(0.45, 0.5, 0.55)]
-	player = Actor.new()
-	add_child(player)
-	var look: Array = [Color(0.95, 0.55, 0.15), Color(0.15, 0.2, 0.3), "Soldier"]
 	var stn := get_node_or_null("/root/Settings")
-	if stn and not demo:
-		var o: Array = stn.OUTFITS[stn.outfit]          # the outfit picked in the lobby's locker
-		look = [o[1], o[2], o[3]]
-	player.setup(self, "You", true, look[0], look[1], look[2])
-	actors.append(player)
-	for i in BOT_COUNT:
+	# who is playing: one human (single player), or the party from the lobby (network match: humans first, in party order)
+	var plist: Array = [{"peer_id": 1, "name": "You", "outfit": int(stn.outfit) if (stn and not demo) else -1}]
+	if net_active:
+		plist = netsvc.match_info.players
+		var me: int = netsvc.my_id()
+		for i in plist.size():
+			if int(plist[i].peer_id) == me:
+				my_idx = i
+	for i in plist.size():
+		var h := Actor.new()
+		add_child(h)
+		var look: Array = [Color(0.95, 0.55, 0.15), Color(0.15, 0.2, 0.3), "Soldier"]
+		var oi := int(plist[i].outfit)
+		if stn and oi >= 0 and not demo:
+			var o: Array = stn.OUTFITS[clampi(oi, 0, stn.OUTFITS.size() - 1)]          # the outfit picked in the lobby's locker
+			look = [o[1], o[2], o[3]]
+		h.setup(self, String(plist[i].name), true, look[0], look[1], look[2])
+		actors.append(h)
+		humans.append(h)
+	player = actors[my_idx]
+	var bot_count := BOT_COUNT + 1 - plist.size()
+	for i in bot_count:
 		var b := Actor.new()
 		add_child(b)
 		var robot := i % 4 == 3                                   # a quarter of the bots wear robot skins
 		b.setup(self, BOT_NAMES[i], false, colors[i % colors.size()], colors[(i * 3 + 2) % colors.size()].darkened(0.3) if not robot else colors[(i * 5 + 1) % colors.size()], "Xbot" if robot else "Soldier")
 		actors.append(b)
+		if net_client:
+			rng.randf()                                           # keep the seeded stream in step with the host; the host runs the brains
+			continue
 		var brain := preload("res://scripts/bot.gd").new()
 		b.add_child(brain)
 		brain.setup(self, b, rng.randf())
@@ -438,6 +483,160 @@ func _setup_actors() -> void:
 	bosses = Bosses.new()
 	add_child(bosses)
 	bosses.setup(self)
+	if net_active:
+		nm = preload("res://scripts/net_match.gd").new()
+		nm.name = "NetMatch"
+		add_child(nm)
+		nm.setup(self)
+
+
+# ----------------------------------------------------------------------------- commands and interaction (solo, host and LAN client)
+
+func mode_duos() -> bool:
+	return net_active and String(netsvc.match_info.get("mode", "solo")) == "duos"
+
+
+func cmd(a: Actor, cname: String, args: Array = []) -> Variant:
+	## Every player action that is not a continuous input goes through here. Solo and host run it at once; a LAN client
+	## sends it to the host, which runs it on that player's actor.
+	if net_client:
+		nm.send_cmd(cname, args)
+		return true
+	return exec_cmd(a, cname, args)
+
+
+func exec_cmd(a: Actor, cname: String, args: Array) -> Variant:
+	if not a.alive():
+		return false
+	match cname:
+		"select":
+			a.select(int(args[0]))
+		"build":
+			a.set_build(String(args[0]))
+		"cycle_mat":
+			a.cycle_build_mat()
+		"reload":
+			a.start_reload()
+		"drop":
+			a.drop_slot(int(args[0]))
+		"swap_slots":
+			a.swap_slots(int(args[0]), int(args[1]))
+		"emote":
+			a.start_emote(String(args[0]))
+		"interact":
+			interact(a)
+		"hire":
+			var i := int(args[0])
+			if i >= 0 and i < npcs.size():
+				return hire_npc(npcs[i], a)
+		"jump":
+			a.jump_from_blimp()
+		"glider":
+			a.deploy_glider()
+		"fall":
+			a.hit(clampf(float(args[0]), 0.0, 300.0), null, true, a.global_position)
+		"edit_apply", "edit_reset":
+			var e = structures.by_id.get(int(args[0]))
+			if e != null and not e.dead and e.kind == "build" and e.get("owner") == a and (e.pos as Vector3).distance_to(a.global_position) < 12.0:
+				if cname == "edit_apply":
+					structures.apply_edit(e, args[1])
+				else:
+					e.edit = []
+					structures._rebuild(e)
+		"noop":
+			pass
+	return true
+
+
+func _interact_decide(a: Actor) -> Dictionary:
+	## What the use key would do for this actor right now: {kind, label, usable, target}. Pure: it changes nothing.
+	var none := {"kind": "", "label": "", "usable": false, "target": null}
+	if a.state == Actor.State.SKYDIVE and not a.launched:
+		if a.height_above_ground() > 8.0:
+			return {"kind": "glider", "label": "Deploy glider", "usable": true, "target": null}
+		return none
+	if a.state != Actor.State.GROUND:
+		return none
+	var who = npc_near(a)
+	if who != null:
+		return {"kind": "talk", "label": "Talk to %s" % who.display_name, "usable": true, "target": who}
+	if warming_up():                                    # warm-up: zip lines yes, loot no
+		var wz = events.zip_near(a)
+		if wz != null:
+			return {"kind": "zip", "label": "Ride the zip line", "usable": true, "target": wz}
+		return none
+	var vault = bosses.vault_near(a) if bosses != null else null
+	if vault != null:                                   # a keycard vault door
+		if bosses.keycard_slot(a, vault) >= 0:
+			return {"kind": "vault", "label": "Open vault", "usable": true, "target": vault}
+		return {"kind": "vault", "label": "Needs " + Items.DEFS[vault.card].name, "usable": false, "target": vault}
+	var c = nearest_container(a.global_position, 2.8)
+	if c != null:
+		return {"kind": "chest", "label": "Open %s" % {"chest": "chest", "ammo_box": "ammo box", "supply_drop": "supply drop"}[c.kind], "usable": true, "target": c}
+	var bench = events.bench_near(a)
+	if bench != null:
+		var it = a.item()
+		if it == null or Items.def(it).kind != "weapon":
+			return {"kind": "bench", "label": "Hold a weapon to upgrade it here", "usable": false, "target": bench}
+		if it.rarity >= 4:
+			return {"kind": "bench", "label": "%s is already %s" % [Items.def(it).name, Items.RARITY_NAMES[it.rarity]], "usable": false, "target": bench}
+		var cost: int = events.upgrade_cost(it.rarity)
+		return {"kind": "bench", "label": "Upgrade to %s  ·  %d gold%s" % [Items.RARITY_NAMES[it.rarity + 1], cost, "" if a.gold >= cost else "  (you have %d)" % a.gold], "usable": true, "target": bench}
+	var zl = events.zip_near(a)
+	if zl != null:
+		return {"kind": "zip", "label": "Ride the zip line", "usable": true, "target": zl}
+	var p = nearest_pickup(a, 2.2)
+	if p != null and p.item.has("id") and not a.wants(p.item):
+		return {"kind": "swap", "label": "Swap for %s" % Items.label(p.item), "usable": true, "target": p}
+	return none
+
+
+func interact(a: Actor, dry := false) -> Dictionary:
+	## The use key. dry = only report the prompt (player.gd shows it). Otherwise do it: on the host / solo for real, on a LAN
+	## client the movement-only parts (glider, zip) run locally and everything else is sent to the host.
+	var r := _interact_decide(a)
+	if dry:
+		return r
+	if net_client:
+		if r.kind == "glider":
+			a.deploy_glider()
+		elif r.kind == "zip":
+			a.start_zip(r.target[0], r.target[1])
+		if r.kind != "talk":
+			cmd(a, "interact")
+		return r
+	if has_method("try_revive") and call("try_revive", a):       # the Duos agent: hold E over a downed teammate
+		return {"kind": "revive", "label": "", "usable": true, "target": null}
+	if not r.usable:
+		return r
+	match r.kind:
+		"glider":
+			a.deploy_glider()
+		"zip":
+			a.start_zip(r.target[0], r.target[1])
+		"vault":
+			bosses.open_vault(r.target, a)
+		"chest":
+			open_container(r.target, a)
+		"bench":
+			events.upgrade(a)
+		"swap":
+			var it: Dictionary = r.target.item
+			remove_pickup(r.target)
+			a.swap_with(it)
+	return r
+
+
+func net_npc_hired(i: int) -> void:
+	## A client shows that an NPC was hired (the host did the work).
+	if i < 0 or i >= npcs.size():
+		return
+	var n: Actor = npcs[i]
+	var brain: Node = n.get_node("NpcBrain")
+	brain.plate.text = "%s\nyour ally" % brain.info.name
+	brain.plate.modulate = Color(0.45, 1.0, 0.5)
+	n.hired = true
+	hired = n
 
 
 # ----------------------------------------------------------------------------- frame
@@ -450,12 +649,21 @@ func _start_warmup() -> void:
 	## A real match (started from the lobby, no test or demo flags) opens with a short warm-up on the island.
 	var st := get_node_or_null("/root/Settings")
 	var flags: Array = Array(OS.get_cmdline_user_args()).filter(func(x: String) -> bool: return x.begins_with("--"))
-	if demo or not flags.is_empty() or (st and st.get("skip_warmup")):
+	if net_active:
+		net_waiting = true                                # host: until every client has loaded; client: until the first snapshot
+	elif demo or not flags.is_empty() or (st and st.get("skip_warmup")):
 		return
-	warmup_left = WARMUP
+	warmup_left = warmup_len if net_active else WARMUP
 	announce_text = ""                                   # no blimp to jump from yet
 	var spots: Array = get_tree().get_nodes_in_group("spawn")
-	spots.shuffle()
+	if net_active:
+		for k in range(spots.size() - 1, 0, -1):          # the same shuffle on every device: the seeded rng, not the global one
+			var j := rng.randi() % (k + 1)
+			var tmp = spots[k]
+			spots[k] = spots[j]
+			spots[j] = tmp
+	else:
+		spots.shuffle()
 	for i in actors.size():
 		var a: Actor = actors[i]
 		var m: Node3D = spots[i % spots.size()]
@@ -492,13 +700,21 @@ func _end_warmup() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if net_waiting:
+		if net_host and netsvc.all_loaded():
+			net_waiting = false
+		else:
+			return
 	if warmup_left > 0.0:
 		warmup_left -= delta
 		pick_tick += 1
 		if pick_tick % 12 == 3:
 			_update_doors()
 		if warmup_left <= 0.0:
-			_end_warmup()
+			if net_client:
+				warmup_left = 0.001                            # the host's snapshot ends the warm-up
+			else:
+				_end_warmup()
 		return
 	match_time += delta
 	if match_time < BLIMP_TIME + 6.0:
@@ -513,7 +729,7 @@ func _physics_process(delta: float) -> void:
 					a.jump_from_blimp()
 	elif blimp.visible:
 		blimp.visible = false
-	if not storm.active and match_time > 20.0:
+	if not storm.active and match_time > 20.0 and not net_client:
 		storm.start()
 	if autotest and OS.get_cmdline_user_args().has("--trace") and Engine.get_physics_frames() % 60 == 0:
 		for a in actors:                                    # follow every bot that is standing in the storm
@@ -567,7 +783,7 @@ func alive_count() -> int:
 
 
 func _check_win() -> void:
-	if over:
+	if over or net_client:
 		return
 	var n := alive_count()
 	if autotest and int(match_time) % 30 == 0 and int(match_time) != stats.get("last_log", -1):
@@ -605,6 +821,8 @@ func _check_win() -> void:
 		stats["ever_armed"] = armed_ever
 		stats["pieces_built"] = structures.built
 		stats["parts_destroyed"] = structures.destroyed
+		if nm and net_host:
+			nm.on_match_over()
 		print("MATCH_OVER ", JSON.stringify({"difficulty": difficulty, "winner": winner.display_name if winner else "nobody", "winner_kills": winner.kills if winner else 0,
 				"time": snappedf(match_time, 0.1), "player_place": player.placement, "player_kills": player.kills, "storm_phase": storm.phase + 1, "stats": stats}))
 		if autotest:
@@ -614,6 +832,8 @@ func _check_win() -> void:
 func announce(t: String) -> void:
 	announce_text = t
 	announce_time = match_time
+	if nm and net_host:
+		nm.ev("announce", [t])
 
 
 func ray(from: Vector3, to: Vector3, exclude: Actor = null, mask := 3) -> Dictionary:
@@ -634,6 +854,8 @@ func player_aim_point() -> Vector3:
 func sfx(id: String, pos: Vector3) -> void:
 	## Sound hook: audio.gd maps the id to a file. Vector3.INF as pos plays it non-positionally.
 	audio.play(id, pos)
+	if nm and net_host and pos != Vector3.INF:
+		nm.fx_add(["s", id, pos])
 
 
 func _run_soundtest() -> void:
@@ -656,14 +878,25 @@ func on_damage_dealt(attacker: Actor, victim: Actor, amount: float, at: Vector3,
 	stats.damage += amount
 	if attacker == player:
 		player_damage += amount
+	elif attacker != null and attacker.peer_id > 1:
+		attacker.net_damage += amount
 	if victim.is_boss:
 		bosses.note_damage(victim, attacker)
+	var boss_i: int = -1
+	if victim.is_boss and nm and attacker != null and attacker.peer_id > 1:
+		for i in bosses.list.size():
+			if bosses.list[i].actor == victim:
+				boss_i = i
 	if attacker == player and attacker != victim:
 		sfx("hit_marker", Vector3.INF)
 	if attacker == player and hud:
 		hud.add_damage_number(at, amount, victim.shield > 0.0, not victim.alive(), headshot)
+	elif nm and attacker != null and attacker.peer_id > 1 and attacker != victim:       # a remote human: their own screen shows it
+		nm.ev_to(attacker.peer_id, "dmg", [at, amount, victim.shield > 0.0, not victim.alive(), headshot, boss_i])
 	if victim == player and hud and attacker:
 		hud.add_damage_arc(attacker.global_position)
+	elif nm and victim.peer_id > 1 and attacker:
+		nm.ev_to(victim.peer_id, "arc", [attacker.global_position])
 
 
 var xp_earned := -1                       # XP from this match once it is recorded (shown on the summary)
@@ -688,6 +921,8 @@ func on_eliminated(victim: Actor, killer: Actor) -> void:
 		kill_feed.append({"text": "%s has fallen" % victim.display_name, "time": match_time, "mine": true})
 		return
 	victim.placement = alive_count() + 1
+	if nm and net_host:
+		nm.on_eliminated(victim, killer)
 	if victim == player:
 		player_survived = match_time
 		_record_career()
@@ -707,8 +942,12 @@ func on_eliminated(victim: Actor, killer: Actor) -> void:
 	kill_feed.append({"text": text, "time": match_time, "mine": killer == player or victim == player})
 	if kill_feed.size() > 6:
 		kill_feed.pop_front()
+	if nm and net_host:
+		nm.ev("feed", [text, actors.find(killer), actors.find(victim)])
 	if killer == player and victim != player:
 		sfx("elimination", Vector3.INF)
+	elif nm and killer != null and killer.peer_id > 1 and victim != killer:
+		nm.ev_to(killer.peer_id, "ui_sfx", ["elimination"])
 	if victim == player:
 		controller.on_player_eliminated(killer)
 	elif killer != null and killer != player and killer.alive() and rng.randf() < 0.35:
@@ -717,19 +956,32 @@ func on_eliminated(victim: Actor, killer: Actor) -> void:
 
 # ----------------------------------------------------------------------------- pickups and containers
 
-func spawn_pickup(it: Dictionary, pos: Vector3) -> void:
+var pk_next_id := 0
+var pickup_by_id := {}
+
+
+func spawn_pickup(it: Dictionary, pos: Vector3, forced_id := -1, exact := false) -> void:
+	## `forced_id` / `exact`: a client builds the pickup the host announced (same id, already-settled position).
+	if net_client and nm != null and forced_id < 0:
+		return
 	var n := Node3D.new()
 	fx_root.add_child(n)
 	# rest on whatever is below (floor, ground, platform)
-	var res := ray(pos + Vector3(0, 0.6, 0), pos + Vector3(0, -30, 0), null, 1)
-	n.position = (res.position if not res.is_empty() else pos) + Vector3(0, 0.45, 0)
+	if exact:
+		n.position = pos
+	else:
+		var res := ray(pos + Vector3(0, 0.6, 0), pos + Vector3(0, -30, 0), null, 1)
+		n.position = (res.position if not res.is_empty() else pos) + Vector3(0, 0.45, 0)
+	pk_next_id += 1
+	_pk_pending_id = forced_id if forced_id >= 0 else pk_next_id
 	var color: Color
 	var model: Node3D
 	if it.has("forage"):                               # apples and mushrooms just lie there
 		model = Models.make(it.forage)
 		n.add_child(model)
-		n.position.y -= 0.42
-		pickups.append({"node": n, "model": model, "item": it, "pos": n.position, "born": match_time, "still": true})
+		if not exact:
+			n.position.y -= 0.42
+		_pk_add({"node": n, "model": model, "item": it, "pos": n.position, "born": match_time, "still": true})
 		return
 	if it.has("gold"):
 		color = Color(1.0, 0.8, 0.25)
@@ -778,7 +1030,18 @@ func spawn_pickup(it: Dictionary, pos: Vector3) -> void:
 	ring.material_override = Models.glow_material(color, 1.8, 0.28)
 	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	n.add_child(ring)
-	pickups.append({"node": n, "model": model, "item": it, "pos": n.position, "born": match_time})
+	_pk_add({"node": n, "model": model, "item": it, "pos": n.position, "born": match_time})
+
+
+var _pk_pending_id := 0
+
+
+func _pk_add(p: Dictionary) -> void:
+	p["id"] = _pk_pending_id
+	pickups.append(p)
+	pickup_by_id[p.id] = p
+	if nm and net_host:
+		nm.ev("pk_add", [p.id, p.item, p.pos, p.get("still", false)])
 
 
 func settle_pickups(at: Vector3, radius: float) -> void:
@@ -796,7 +1059,10 @@ func settle_pickups(at: Vector3, radius: float) -> void:
 
 func remove_pickup(p: Dictionary) -> void:
 	pickups.erase(p)
+	pickup_by_id.erase(p.get("id", -1))
 	p.node.queue_free()
+	if nm and net_host:
+		nm.ev("pk_rm", [p.get("id", -1)])
 
 
 func _update_pickups(delta: float) -> void:
@@ -814,7 +1080,7 @@ func _update_pickups(delta: float) -> void:
 	pick_tick += 1
 	if pick_tick % 12 == 3:
 		_update_doors()
-	if pick_tick % 6 != 0:
+	if pick_tick % 6 != 0 or net_client:
 		return
 	for a in actors:
 		if not a.alive() or a.state != Actor.State.GROUND:
@@ -829,6 +1095,8 @@ func _update_pickups(delta: float) -> void:
 				if a == player and hud:
 					hud.add_pickup_note(p.item)
 					sfx("pickup", Vector3.INF)
+				elif nm and a.peer_id > 1:
+					nm.ev_to(a.peer_id, "pickup", [p.item])
 				remove_pickup(p)
 
 
@@ -856,10 +1124,14 @@ func nearest_container(pos: Vector3, max_dist: float) -> Variant:
 	return best
 
 
-func open_container(c: Dictionary, _by: Actor) -> void:
+func open_container(c: Dictionary, _by: Actor, visual_only := false) -> void:
 	if c.opened or c.get("locked", false) or warming_up():
 		return
+	if net_client and not visual_only:
+		return
 	c.opened = true
+	if nm and net_host:
+		nm.ev("ct_open", [containers.find(c)])
 	sfx("chest_open", c.pos)
 	stats.containers_opened += 1
 	var glow := (c.node as Node3D).get_node_or_null("Glow")
@@ -868,6 +1140,8 @@ func open_container(c: Dictionary, _by: Actor) -> void:
 	if c.lid:
 		var tw := create_tween()
 		tw.tween_property(c.lid, "rotation:x", (c.lid as Node3D).rotation.x + deg_to_rad(75), 0.35)
+	if visual_only:
+		return
 	var p: Vector3 = c.pos + Vector3(0, 0.6, 0)
 	var drops: Array = []
 	match c.kind:
@@ -898,6 +1172,8 @@ func spawn_rocket(owner_a: Actor, pos: Vector3, dir: Vector3, dmg: float, radius
 	n.look_at(pos + dir, Vector3.UP if absf(dir.y) < 0.95 else Vector3.RIGHT)
 	n.rotate_object_local(Vector3.UP, PI)
 	projectiles.append({"node": n, "vel": dir * 46.0, "owner": owner_a, "damage": dmg, "radius": radius, "life": 6.0, "kind": "rocket"})
+	if nm and net_host:
+		nm.ev("proj", ["r", actors.find(owner_a), pos, dir, dmg, radius])
 
 
 func spawn_grenade(owner_a: Actor, pos: Vector3, vel: Vector3, dmg: float, radius: float) -> void:
@@ -906,6 +1182,8 @@ func spawn_grenade(owner_a: Actor, pos: Vector3, vel: Vector3, dmg: float, radiu
 	fx_root.add_child(n)
 	n.global_position = pos
 	projectiles.append({"node": n, "vel": vel, "owner": owner_a, "damage": dmg, "radius": radius, "life": 2.4, "kind": "grenade"})
+	if nm and net_host:
+		nm.ev("proj", ["g", actors.find(owner_a), pos, vel, dmg, radius])
 
 
 func _update_projectiles(delta: float) -> void:
@@ -936,6 +1214,12 @@ func _update_projectiles(delta: float) -> void:
 func explode(pos: Vector3, pr: Dictionary) -> void:
 	projectiles.erase(pr)
 	pr.node.queue_free()
+	if net_client:                                           # damage and structures are the host's: just the flash
+		if pr.kind == "orb":
+			fx_shockwave(pos, pr.radius)
+		else:
+			fx_blast(pos, pr.radius)
+		return
 	if pr.kind == "orb":
 		shock_burst(pos, pr)
 		return
@@ -1014,6 +1298,8 @@ func fx_blast(pos: Vector3, radius: float) -> void:
 
 func fx_tracer(from: Vector3, to: Vector3, rarity: int) -> void:
 	stats.shots += 1
+	if nm and net_host:
+		nm.fx_add(["t", from, to, rarity])
 	if autotest or from.distance_to(to) < 0.5:
 		return
 	var mi := MeshInstance3D.new()
@@ -1060,6 +1346,8 @@ func spawn_shockwave(owner_a: Actor, pos: Vector3, dir: Vector3, d: Dictionary) 
 	n.global_position = pos
 	projectiles.append({"node": n, "vel": dir * 30.0, "owner": owner_a, "damage": float(d.damage), "radius": float(d.radius), "life": 5.0,
 		"kind": "orb", "knock": float(d.get("knock", 34.0)), "struct": float(d.get("struct_damage", 400.0))})
+	if nm and net_host:
+		nm.ev("proj", ["o", actors.find(owner_a), pos, dir, d])
 
 
 func shock_burst(pos: Vector3, pr: Dictionary) -> void:

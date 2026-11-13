@@ -100,6 +100,16 @@ var storm_time := 0.0
 var fall_start := 0.0
 var step_dist := 0.0
 var pickup_cd := 0.0
+# LAN multiplayer (all inert in single player)
+var peer_id := 0                         # > 1: a remote human, simulated on the host from their inputs (remote_brain.gd)
+var remote_sim := false                  # host: this human's movement comes from the client, the host runs combat/inventory
+var net_puppet := false                  # client: driven by host snapshots, no simulation
+var net_floor := true                    # remote_sim: the client says the feet are on the ground
+var net_aim := Vector3.INF               # remote_sim: the point under the client's crosshair
+var net_fire_edge := 0                   # client counts trigger pulls so the host can fire semi-auto guns once per click
+var net_damage := 0.0                    # damage a remote human has dealt (their summary)
+var net_held := ""                       # puppet: the item id in hand, to skip rebuilding the model
+var net_build_fire := false              # client: the trigger is held while building (in_fire is off then)
 
 
 func setup(g: Node, nm: String, player: bool, outfit: Color, accent: Color, body_id := "Soldier") -> void:
@@ -153,6 +163,9 @@ func height_above_ground() -> float:
 # ----------------------------------------------------------------------------- movement
 
 func _physics_process(delta: float) -> void:
+	if net_puppet:
+		_puppet_tick(delta)
+		return
 	if state == State.DEAD:
 		return
 	if not game.profile:
@@ -169,7 +182,9 @@ func _tick(delta: float) -> void:
 	_mythic_tick(delta)
 	if emote != "":
 		_emote_tick(delta)
-	if mantle_t >= 0.0:
+	if remote_sim:
+		pass                                                 # the client moves this human; the host only runs combat and items
+	elif mantle_t >= 0.0:
 		_mantle_step(delta)
 	elif web_state != 0:
 		_web_step(delta)
@@ -212,6 +227,10 @@ func _tick(delta: float) -> void:
 				_swim_move(delta)
 	body.rotation.y = lerp_angle(body.rotation.y, aim_yaw, clampf(delta * 14.0, 0.0, 1.0))
 	body.animate(delta, self)
+	if game.net_client:                                       # the host runs the weapon and the items; just count down for the HUD
+		reloading = maxf(reloading - delta, 0.0)
+		using = maxf(using - delta, 0.0)
+		return
 	if state == State.GROUND and mantle_t < 0.0:
 		_combat(delta)
 	else:
@@ -220,8 +239,42 @@ func _tick(delta: float) -> void:
 			cancel_use()
 
 
+func _puppet_tick(delta: float) -> void:
+	## A remote actor on a client: the snapshot sets position and fields, this only turns the body and animates it.
+	if emote != "":
+		emote_t += delta
+	body.rotation.y = lerp_angle(body.rotation.y, aim_yaw, clampf(delta * 14.0, 0.0, 1.0))
+	body.animate(delta, self)
+
+
+func _floor() -> bool:
+	## Standing on something: the client's word for a remote human on the host, physics for everyone else.
+	return net_floor if remote_sim else is_on_floor()
+
+
+func _cam_aim() -> Vector3:
+	## The point under the crosshair: the host's camera for the local player, the client's reported point for a remote human.
+	if remote_sim and net_aim != Vector3.INF:
+		return net_aim
+	return game.player_aim_point()
+
+
+func net_set_dead() -> void:
+	## A client shows an elimination the host decided (no drops, no scoring here).
+	if state == State.DEAD:
+		return
+	hp = 0.0
+	shield = 0.0
+	_mythic_clear()
+	state = State.DEAD
+	collision_layer = 0
+	collision_mask = 0
+	body.visible = false
+	build_piece = ""
+
+
 func start_emote(name: String) -> void:
-	if state != State.GROUND or not is_on_floor() or not Character.EMOTES.has(name):
+	if state != State.GROUND or not _floor() or not Character.EMOTES.has(name):
 		return
 	sliding = false
 	set_crouched(false)
@@ -302,6 +355,8 @@ func deploy_glider() -> void:
 func jump_from_blimp() -> void:
 	if state != State.BLIMP:
 		return
+	if game.net_client and self == game.player:
+		game.cmd(self, "jump")                          # the host decides; this device also starts falling at once
 	state = State.SKYDIVE
 	velocity = game.blimp_velocity() * 0.5 + Vector3(0, -6, 0)
 	in_jump = false
@@ -862,6 +917,20 @@ func _spare_ammo(it: Dictionary) -> void:
 	ammo[d.ammo] += maxi(int(d.mag) * 2, int(Items.AMMO_PICKUP[d.ammo]))
 
 
+func swap_slots(i: int, j: int) -> void:
+	## Inventory screen: two hotbar slots trade places (the held one follows its item).
+	var t = slots[i]
+	slots[i] = slots[j]
+	slots[j] = t
+	if using > 0.0 and (use_slot == i or use_slot == j):
+		cancel_use()
+	if active == i:
+		active = j
+	elif active == j:
+		active = i
+	_refresh_held()
+
+
 func drop_slot(i: int) -> void:
 	if i < 0 or slots[i] == null:
 		return
@@ -1053,7 +1122,7 @@ func _swing_pickaxe() -> void:
 	var from := eye()
 	var dir := aim_dir()
 	if is_player:                                      # the pickaxe hits the point under the crosshair
-		dir = (game.player_aim_point() - from).normalized()
+		dir = (_cam_aim() - from).normalized()
 	var hitp = game.ray(from, from + dir * 3.2, self)
 	if hitp.is_empty():
 		return
@@ -1071,7 +1140,7 @@ var last_shot_t := -99.0
 
 func first_shot_ready(d: Dictionary) -> bool:
 	## First-shot accuracy: a single-bullet gun fired from a standstill after a short pause goes dead centre.
-	if int(d.get("pellets", 1)) != 1 or d.get("rocket", false) or not is_on_floor():
+	if int(d.get("pellets", 1)) != 1 or d.get("rocket", false) or not _floor():
 		return false
 	if Vector2(velocity.x, velocity.z).length() > 1.0:
 		return false
@@ -1083,7 +1152,7 @@ func spread_deg(d: Dictionary) -> float:
 	if first_shot_ready(d):
 		return 0.0
 	var moving := Vector2(velocity.x, velocity.z).length() > 1.0
-	return d.spread * (1.35 if moving else 1.0) * (1.6 if not is_on_floor() else 1.0) * (0.7 if crouched else 1.0) * (1.0 + bloom) * spread_mul
+	return d.spread * (1.35 if moving else 1.0) * (1.6 if not _floor() else 1.0) * (0.7 if crouched else 1.0) * (1.0 + bloom) * spread_mul
 
 
 func _shoot(it: Dictionary, d: Dictionary) -> void:
@@ -1097,7 +1166,7 @@ func _shoot(it: Dictionary, d: Dictionary) -> void:
 	var base := aim_dir()
 	if is_player:
 		# aim where the camera looks, then shoot from the eye towards that point
-		var target: Vector3 = game.player_aim_point()
+		var target: Vector3 = _cam_aim()
 		base = (target - from).normalized()
 	game.sfx(it.id, global_position)
 	if d.get("rocket", false):
@@ -1150,6 +1219,10 @@ func _throw(it: Dictionary, d: Dictionary) -> void:
 func hit(amount: float, attacker: Actor, bypass_shield: bool, from: Vector3) -> void:
 	if state == State.DEAD or state == State.BLIMP or amount <= 0.0 or game.warming_up():
 		return
+	if game.net_client:                                # damage is the host's call; a fall is reported to it
+		if self == game.player and attacker == null and bypass_shield and from == global_position:
+			game.cmd(self, "fall", [amount])
+		return
 	if is_npc and (not hired or attacker == game.player):
 		return                                         # nobody hurts them before they are hired, and no friendly fire
 	if is_player and attacker != null and attacker == game.hired:
@@ -1166,8 +1239,10 @@ func hit(amount: float, attacker: Actor, bypass_shield: bool, from: Vector3) -> 
 		shield -= s
 		left -= s
 	hp -= left
-	if is_player:
+	if self == game.player:
 		game.sfx("hurt", Vector3.INF)
+	elif peer_id > 1 and game.nm:
+		game.nm.ev_to(peer_id, "ui_sfx", ["hurt"])
 	if hp <= 0.0:
 		die(attacker if attacker != null else (last_attacker if game.match_time - last_hit_time < 8.0 else null))
 
@@ -1267,7 +1342,7 @@ func _mythic_tick(delta: float) -> void:
 		charge = 0.0
 	var rising := in_fire and not _web_prev_fire
 	_web_prev_fire = in_fire
-	if rising and it != null and it.id == "web_shooters" and fire_cd <= 0.0 and build_piece == "" and emote == "" and using <= 0.0 and mantle_t < 0.0:
+	if rising and it != null and it.id == "web_shooters" and fire_cd <= 0.0 and build_piece == "" and emote == "" and using <= 0.0 and mantle_t < 0.0 and not remote_sim:
 		_web_fire()
 	if yank_victim != null:
 		_grasp_yank_step(delta)
@@ -1314,7 +1389,7 @@ func mythic_cooldown_frac() -> float:
 func _aim_from(from: Vector3) -> Vector3:
 	var dir := aim_dir()
 	if is_player:
-		dir = (game.player_aim_point() - from).normalized()
+		dir = (_cam_aim() - from).normalized()
 	return dir
 
 
@@ -1515,6 +1590,8 @@ func grasp_at(target) -> bool:
 		var dn: Dictionary = game.ray(spot + Vector3(0, 2.0, 0), spot - Vector3(0, 4.0, 0), self, 1)
 		yank_to = Vector3(spot.x, dn.position.y if not dn.is_empty() else global_position.y, spot.z)
 		v.stun_t = maxf(v.stun_t, YANK_TIME + 0.1)
+		if v.peer_id > 1 and game.nm:
+			game.nm.ev_to(v.peer_id, "stun", [YANK_TIME + 0.1])
 		v.zip = null
 		v.mantle_t = -1.0
 		v._web_cancel()
@@ -1546,6 +1623,9 @@ func grasp_at(target) -> bool:
 	grasp_to = pt + nrm * 0.9
 	grasp_t = 0.0
 	grasp_pull = true
+	if peer_id > 1 and game.nm:                         # that human moves on their own device
+		grasp_pull = false
+		game.nm.ev_to(peer_id, "grasp_pull", [grasp_to])
 	if is_on_floor():
 		velocity.y = maxf(velocity.y, 4.0)
 		global_position += Vector3(0, 0.1, 0)
@@ -1566,6 +1646,8 @@ func _grasp_yank_step(delta: float) -> void:
 	if k < 1.0:
 		return
 	yank_victim = null
+	if v.peer_id > 1 and game.nm:
+		game.nm.ev_to(v.peer_id, "set_pos", [v.global_position, Vector3.ZERO])
 	var d: Dictionary = Items.DEFS["ravage_grasp"]
 	var dmg := float(d.damage)
 	v.hit(dmg, self, false, global_position)
@@ -1675,6 +1757,9 @@ func shockwave_fire(dir: Vector3) -> bool:
 
 
 func receive_knock(up: float, push: Vector3) -> void:
+	if peer_id > 1 and game.nm:                         # a remote human moves on their own device
+		game.nm.ev_to(peer_id, "knock", [up, push])
+		return
 	## Thrown up and away by a shockwave: the launch pad's launch(), plus sideways momentum, and no fall damage.
 	launch(up)
 	knock_vel = push

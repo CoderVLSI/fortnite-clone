@@ -74,20 +74,11 @@ func swap_slots(i: int, j: int) -> void:
 	var a: Actor = game.player
 	if i == j or i < 0 or j < 0 or i >= Items.SLOTS or j >= Items.SLOTS:
 		return
-	var t = a.slots[i]
-	a.slots[i] = a.slots[j]
-	a.slots[j] = t
-	if a.using > 0.0 and (a.use_slot == i or a.use_slot == j):
-		a.cancel_use()
-	if a.active == i:
-		a.active = j
-	elif a.active == j:
-		a.active = i
-	a._refresh_held()
+	game.cmd(a, "swap_slots", [i, j])
 
 
 func drop(i: int) -> void:
-	game.player.drop_slot(i)
+	game.cmd(game.player, "drop", [i])
 	if sel == i:
 		sel = -1
 
@@ -102,7 +93,7 @@ func _tap(i: int) -> void:
 	if touch_mode:
 		sel = -1 if sel == i else i
 	if a.slots[i] != null:
-		a.select(i)
+		game.cmd(a, "select", [i])
 
 
 # ----------------------------------------------------------------------------- input

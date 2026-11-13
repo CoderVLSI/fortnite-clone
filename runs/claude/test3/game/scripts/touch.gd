@@ -134,7 +134,7 @@ func _input(e: InputEvent) -> void:
 					return
 			var slot := _hotbar_slot(p)
 			if slot > -2:
-				game.player.select(slot)
+				game.cmd(game.player, "select", [slot])
 				return
 			if p.x > get_viewport_rect().size.x - 260 and p.y < 260:
 				pressed_once["map"] = true

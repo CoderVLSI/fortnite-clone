@@ -56,6 +56,7 @@ var building: Array = []          # pieces whose hit points are still climbing
 var pending: Array = []           # [time, entry] chain-collapse queue
 var debris: Array = []
 var next_id := 1
+var by_id := {}                   # entry id -> entry (the same ids on every device in a LAN match)
 var level_count := 0
 var destroyed := 0
 var built := 0
@@ -146,6 +147,12 @@ func _debris_color(obj: String, mat: String) -> Color:
 
 func _entry(kind: String, obj: String, hp: float, mat: String, pos: Vector3) -> Dictionary:
 	next_id += 1
+	var ent := _entry_dict(kind, obj, hp, mat, pos)
+	by_id[next_id] = ent
+	return ent
+
+
+func _entry_dict(kind: String, obj: String, hp: float, mat: String, pos: Vector3) -> Dictionary:
 	return {"id": next_id, "kind": kind, "name": obj, "hp": hp, "max": hp, "mat": mat, "pos": pos, "dead": false, "yield": 5, "color": DEBRIS_COLORS.get(mat, DEBRIS_COLORS.wood)}
 
 
@@ -220,11 +227,15 @@ func damage_at(collider: Object, shape: int, amount: float, attacker: Actor, at:
 
 
 func damage(e: Dictionary, amount: float, attacker: Actor, at: Vector3) -> void:
-	if e.dead or amount <= 0.0 or game.warming_up():          # the island stays whole through the warm-up
+	if e.dead or amount <= 0.0 or game.warming_up() or game.net_client:          # the island stays whole through the warm-up
 		return
 	e.hp -= amount
 	if attacker != null and attacker == game.player and game.hud:
 		game.hud.add_structure_number(at, amount)
+	elif game.nm and attacker != null and attacker.peer_id > 1:
+		game.nm.ev_to(attacker.peer_id, "snum", [at, amount])
+	if game.nm and game.net_host:
+		game.nm.ev("st_hp", [e.id, maxf(e.hp, 0.0)])
 	_wobble(e)
 	if e.hp <= 0.0:
 		destroy(e)
@@ -264,6 +275,8 @@ func destroy(e: Dictionary) -> void:
 		return
 	e.dead = true
 	destroyed += 1
+	if game.nm and game.net_host:
+		game.nm.ev("st_del", [e.id])
 	if weak_entry == e:
 		weak_entry = null
 		weak.visible = false
@@ -291,7 +304,8 @@ func destroy(e: Dictionary) -> void:
 					if sn in COLLAPSE[base]:
 						for b in sib.get_children():
 							if b is StaticBody3D and by_body.has(b.get_instance_id()):
-								pending.append([game.match_time + 0.15, by_body[b.get_instance_id()]])
+								if not game.net_client:
+									pending.append([game.match_time + 0.15, by_body[b.get_instance_id()]])
 					elif sn in GO_WITH.get(base, []):
 						sib.visible = false
 						for b in sib.get_children():
@@ -311,7 +325,7 @@ func pickaxe_hit(a: Actor, hit: Dictionary) -> void:
 	var e = lookup(hit.collider, hit.get("shape", 0))
 	if e == null:
 		return
-	var crit: bool = a.is_player and weak_entry == e and weak.visible and weak.global_position.distance_to(hit.position) < 0.55
+	var crit: bool = a == game.player and weak_entry == e and weak.visible and weak.global_position.distance_to(hit.position) < 0.55
 	game.sfx(game.audio.material_sound("hit_", e.mat), hit.position)
 	if crit:
 		game.sfx("weak_point", Vector3.INF)
@@ -320,10 +334,12 @@ func pickaxe_hit(a: Actor, hit: Dictionary) -> void:
 		if got > 0:
 			a.mats[e.mat] += got
 			game.stats["harvested"] = game.stats.get("harvested", 0) + got
-			if a.is_player and game.hud:
+			if a == game.player and game.hud:
 				game.hud.add_mat_note(e.mat, got, crit)
+			elif game.nm and a.peer_id > 1:
+				game.nm.ev_to(a.peer_id, "matnote", [e.mat, got, crit])
 	damage(e, PICKAXE_DAMAGE * (2.0 if crit else 1.0), a, hit.position)
-	if a.is_player:
+	if a == game.player:
 		if e.dead:
 			weak.visible = false
 			weak_entry = null
@@ -548,6 +564,8 @@ func _spawn_piece(t: Dictionary, mat: String, owner_a: Actor) -> Dictionary:
 	body.add_child(cs)
 	var centre: Vector3 = t.xf * (sh[1] as Transform3D).origin
 	var e := _entry("build", "%s %s" % [mat, t.piece], MAT_HP[mat], mat, centre)
+	if game.nm and game.net_host:
+		game.nm.ev("st_new", [e.id, mat, t, game.nm.index_of(owner_a)])
 	e.hp = MAT_HP[mat] * 0.1
 	e["node"] = mi
 	e["root"] = root
@@ -586,6 +604,14 @@ func _spawn_piece(t: Dictionary, mat: String, owner_a: Actor) -> Dictionary:
 	return e
 
 
+func net_spawn(id: int, mat: String, t: Dictionary, owner_a: Actor) -> void:
+	## A client builds the piece the host placed, under the host's id.
+	var e := _spawn_piece(t, mat, owner_a)
+	by_id.erase(e.id)
+	e.id = id
+	by_id[id] = e
+
+
 func _grounded(t: Dictionary, root: Node3D) -> bool:
 	## Does the piece rest on the terrain or on a level object (not on another built piece)?
 	var xf: Transform3D = t.xf
@@ -615,6 +641,7 @@ func _remove_piece(e: Dictionary) -> void:
 	by_body.erase((e.body as Node).get_instance_id())
 	(by_cell.get(e.cell, []) as Array).erase(e)
 	building.erase(e)
+	by_id.erase(e.id)
 	var neighbours := []
 	for f in e.features:
 		var list: Array = features.get(f, [])
@@ -623,7 +650,8 @@ func _remove_piece(e: Dictionary) -> void:
 			if not o.dead and not neighbours.has(o):
 				neighbours.append(o)
 	(e.root as Node).queue_free()
-	_check_support(neighbours)
+	if not game.net_client:                                   # the host decides what collapses and says so
+		_check_support(neighbours)
 
 
 func _check_support(start: Array) -> void:
@@ -744,7 +772,10 @@ func cancel_edit() -> void:
 
 func confirm_edit() -> void:
 	if edit_entry != null and not edit_entry.dead:
-		apply_edit(edit_entry, edit_sel.keys())
+		if game.net_client:                                   # the host applies it and sends the result back
+			game.cmd(game.player, "edit_apply", [edit_entry.id, edit_sel.keys()])
+		else:
+			apply_edit(edit_entry, edit_sel.keys())
 	cancel_edit()
 
 
@@ -753,6 +784,9 @@ func reset_edit() -> void:
 	var e = edit_entry
 	cancel_edit()
 	if e != null and not e.dead:
+		if game.net_client:
+			game.cmd(game.player, "edit_reset", [e.id])
+			return
 		e.edit = []
 		_rebuild(e)
 
@@ -876,6 +910,8 @@ func apply_edit(e: Dictionary, tiles: Array) -> bool:
 
 
 func _rebuild(e: Dictionary) -> void:
+	if game.nm and game.net_host:
+		game.nm.ev("st_edit", [e.id, e.edit, e.dir])
 	var root: Node3D = e.root
 	var body: StaticBody3D = e.body
 	for c in body.get_children():

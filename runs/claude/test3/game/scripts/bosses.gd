@@ -99,6 +99,35 @@ func open_vault(v: Dictionary, by: Actor) -> bool:
 	by.slots[i] = null
 	if i == by.active:
 		by._refresh_held()
+	_vault_fx(v)
+	if game.nm and game.net_host:
+		for vid in vaults:
+			if vaults[vid] == v:
+				game.nm.ev("vault_open", [vid])
+	game.stats["vaults_opened"] = game.stats.get("vaults_opened", 0) + 1
+	if by == game.player:
+		game.announce("Vault open")
+	elif by.peer_id > 1 and game.nm:
+		game.nm.ev_to(by.peer_id, "announce", ["Vault open"])
+	return true
+
+
+func net_open_vault(id: String) -> void:
+	if vaults.has(id) and not vaults[id].opened:
+		_vault_fx(vaults[id])
+
+
+func net_boss_down(a: Actor) -> void:
+	## A client noticed (from the snapshot) that a boss is down.
+	var b = data_for(a)
+	if b != null and b.alive:
+		b.alive = false
+		if b.plate != null:
+			b.plate.queue_free()
+			b.plate = null
+
+
+func _vault_fx(v: Dictionary) -> void:
 	v.opened = true
 	game.sfx("reload_heavy", v.front)
 	game.sfx("hit_metal", v.front)
@@ -112,10 +141,6 @@ func open_vault(v: Dictionary, by: Actor) -> bool:
 	for c in v.chests:
 		c["locked"] = false
 		game._add_glow(c.node, Items.RARITY_COLORS[4], 1.0)
-	game.stats["vaults_opened"] = game.stats.get("vaults_opened", 0) + 1
-	if by == game.player:
-		game.announce("Vault open")
-	return true
 
 
 func vault_drops(rng: RandomNumberGenerator) -> Array:
@@ -212,14 +237,15 @@ func _spawn_boss(id: String, v: Dictionary) -> void:
 	plate.position = Vector3(0, 2.05 * sc + 0.35, 0)
 	plate.text = String(spec.name).to_upper()
 	a.add_child(plate)
-	var brain := preload("res://scripts/bot.gd").new()
-	a.add_child(brain)
-	brain.setup(game, a, 0.5)                      # a fair fight: average reactions, not a sniper
-	a.spread_mul = 1.5
-	brain.mode = "boss"
-	brain.boss_home = home
-	brain.boss_id = id
-	brain.boss_face = v.yaw_out
+	if not game.net_client:                        # a LAN client only shows the boss the host simulates
+		var brain := preload("res://scripts/bot.gd").new()
+		a.add_child(brain)
+		brain.setup(game, a, 0.5)                      # a fair fight: average reactions, not a sniper
+		a.spread_mul = 1.5
+		brain.mode = "boss"
+		brain.boss_home = home
+		brain.boss_id = id
+		brain.boss_face = v.yaw_out
 	a.aim_yaw = v.yaw_out
 	list.append({"id": id, "actor": a, "plate": plate, "home": home, "vault": v, "alive": true, "dmg_t": -99.0, "name": spec.name,
 			"poi": spec.poi, "card": spec.card})

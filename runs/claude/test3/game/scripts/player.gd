@@ -111,7 +111,7 @@ func _build_talk_ui() -> void:
 	v.add_child(row)
 	talk_hire = MenuUI.button("", 22, Vector2(300, 54))
 	talk_hire.pressed.connect(func() -> void:
-		if talking and game.hire_npc(talking):
+		if talking and game.cmd(a, "hire", [game.npcs.find(talking)]):
 			close_talk())
 	row.add_child(talk_hire)
 	var bye := MenuUI.button("Not now", 20, Vector2(160, 54))
@@ -170,7 +170,7 @@ func _unhandled_input(e: InputEvent) -> void:
 			KEY_ESCAPE:
 				game.pause_menu.open()                     # Esc pauses (was: toggle mouse capture)
 			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
-				a.select(e.physical_keycode - KEY_1)
+				game.cmd(a, "select", [e.physical_keycode - KEY_1])
 	elif e is InputEventMouseButton and e.pressed:
 		if inv_open():
 			pass                                       # the inventory owns the mouse
@@ -180,9 +180,9 @@ func _unhandled_input(e: InputEvent) -> void:
 		elif not a.alive() and e.button_index == MOUSE_BUTTON_LEFT:
 			spectate = _next_alive(spectate)
 		elif e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			a.select(wrapi(a.active + 1, -1, Items.SLOTS))
+			game.cmd(a, "select", [wrapi(a.active + 1, -1, Items.SLOTS)])
 		elif e.button_index == MOUSE_BUTTON_WHEEL_UP:
-			a.select(wrapi(a.active - 1, -1, Items.SLOTS))
+			game.cmd(a, "select", [wrapi(a.active - 1, -1, Items.SLOTS)])
 
 
 func _physics_process(delta: float) -> void:
@@ -208,12 +208,13 @@ func _physics_process(delta: float) -> void:
 			wheel_open = false
 			var pick := wheel_pick()
 			if pick >= 0:
-				a.start_emote(WHEEL[pick])
+				game.cmd(a, "emote", [WHEEL[pick]])
 		a.in_dive = a.state == Actor.State.SKYDIVE and (pitch < -0.75 or Input.is_action_pressed("sprint"))
+		a.net_build_fire = false
 		for bk in [["build_wall", "wall"], ["build_floor", "floor"], ["build_stairs", "stairs"], ["build_cone", "cone"]]:
 			if Input.is_action_just_pressed(bk[0]) and not inv_open():
 				game.structures.cancel_edit()
-				a.set_build(bk[1])
+				game.cmd(a, "build", [bk[1]])
 		if Input.is_action_just_pressed("edit"):
 			_edit_key()
 		if inv_open():
@@ -226,21 +227,23 @@ func _physics_process(delta: float) -> void:
 		elif a.build_piece != "":
 			a.in_fire = false
 			if Input.is_action_just_pressed("aim"):
-				a.cycle_build_mat()
+				game.cmd(a, "cycle_mat")
 			_build_tick(delta, Input.is_action_pressed("fire"), Input.is_action_just_pressed("fire"))
 		else:
 			var it = a.item()
 			var auto: bool = it != null and Items.def(it).get("auto", false)
+			if Input.is_action_just_pressed("fire"):
+				a.net_fire_edge += 1                      # LAN: the host fires a semi-auto gun once per click
 			if Input.is_action_just_pressed("fire") or (auto and Input.is_action_pressed("fire")) or (it == null and Input.is_action_pressed("fire")):
 				a.in_fire = true
 			elif not Input.is_action_pressed("fire"):
 				a.in_fire = false
 		if Input.is_action_just_pressed("reload") and not editing() and not inv_open():
-			a.start_reload()
+			game.cmd(a, "reload")
 		if Input.is_action_just_pressed("pickaxe"):
-			a.select(-1)
+			game.cmd(a, "select", [-1])
 		if Input.is_action_just_pressed("drop_item"):
-			a.drop_slot(a.active)
+			game.cmd(a, "drop", [a.active])
 		if Input.is_action_just_pressed("map"):
 			show_map = not show_map
 		_interaction()
@@ -282,25 +285,26 @@ func _touch_input() -> void:
 		if wheel_open:
 			var tp := wheel_pick()
 			if tp >= 0:
-				a.start_emote(WHEEL[tp])
+				game.cmd(a, "emote", [WHEEL[tp]])
 		wheel_open = not wheel_open
 		wheel_vec = Vector2.ZERO
 	if wheel_open:
 		wheel_vec = (wheel_vec + touch.look).limit_length(140.0)
 		touch.look = Vector2.ZERO
 	a.in_dive = a.state == Actor.State.SKYDIVE and pitch < -0.75
+	a.net_build_fire = false
 	if touch.take("build") and not inv_open():        # one button in and out of build mode, like mobile shooters
 		var was_editing := editing()
 		game.structures.cancel_edit()
 		if a.build_piece == "" and not was_editing:
-			a.set_build(touch_last_build)
+			game.cmd(a, "build", [touch_last_build])
 		elif a.build_piece != "":
 			touch_last_build = a.build_piece
-			a.set_build(a.build_piece)                     # the same piece again leaves build mode
+			game.cmd(a, "build", [a.build_piece])                     # the same piece again leaves build mode
 	for bk in [["b_wall", "wall"], ["b_floor", "floor"], ["b_stairs", "stairs"], ["b_cone", "cone"]]:
 		if touch.take(bk[0]) and not inv_open() and a.build_piece != bk[1]:
 			game.structures.cancel_edit()
-			a.set_build(bk[1])
+			game.cmd(a, "build", [bk[1]])
 			touch_last_build = bk[1]
 	if touch.take("edit"):
 		_edit_key()
@@ -314,18 +318,20 @@ func _touch_input() -> void:
 	elif a.build_piece != "":
 		a.in_fire = false
 		if touch.take("mat"):
-			a.cycle_build_mat()
+			game.cmd(a, "cycle_mat")
 		_build_tick(get_physics_process_delta_time(), touch.fire, false)
 	else:
 		a.in_fire = touch.fire or (Settings.auto_fire and _enemy_in_sights())
+		if a.in_fire:
+			a.net_fire_edge += 1                               # touch fires continuously: a pulse per tick (the LAN host fires at the gun rate)
 	if touch.take("auto"):
 		Settings.auto_fire = not Settings.auto_fire
 		Settings.save_file()
 		game.announce("Auto fire " + ("on" if Settings.auto_fire else "off"))
 	if touch.take("reload"):
-		a.start_reload()
+		game.cmd(a, "reload")
 	if touch.take("drop"):
-		a.drop_slot(a.active)
+		game.cmd(a, "drop", [a.active])
 	if touch.take("map"):
 		show_map = not show_map
 	touch_use = touch.take("use")
@@ -353,9 +359,8 @@ func _edit_key() -> void:
 		S.confirm_edit()
 		return
 	if look_entry != null and S.begin_edit(a, look_entry):
-		a.build_piece = ""
+		game.cmd(a, "build", [""])                      # leave build mode (on the host too)
 		a.in_fire = false
-		a._refresh_held()
 
 
 func _edit_tick(held: bool, just: bool) -> void:
@@ -364,6 +369,9 @@ func _edit_tick(held: bool, just: bool) -> void:
 
 func _build_tick(delta: float, held: bool, just: bool) -> void:
 	## Click to place; holding the button keeps placing as the target changes (turbo build).
+	a.net_build_fire = held
+	if game.net_client:
+		return                                             # the host places the piece (remote_brain.gd) and sends it back
 	a.build_cd = maxf(a.build_cd - delta, 0.0)
 	if (just or held) and a.build_cd <= 0.0:
 		if game.structures.place(a):
@@ -384,70 +392,20 @@ func _key_hint() -> String:
 
 
 func _interaction() -> void:
-	if a.state == Actor.State.SKYDIVE and not a.launched:
-		if a.height_above_ground() > 8.0:
-			prompt = _key_hint() + " Deploy glider"
-			if _use_pressed():
-				a.deploy_glider()
-		return
-	if a.state != Actor.State.GROUND:
-		return
+	## Prompts for the use key; what it does lives in game.interact() so a remote player gets the same behaviour.
 	if talking != null:
-		if a.global_position.distance_to(talking.global_position) > 4.0 or _use_pressed() or Input.is_action_just_pressed("ui_cancel"):
+		if a.state != Actor.State.GROUND or a.global_position.distance_to(talking.global_position) > 4.0 or _use_pressed() or Input.is_action_just_pressed("ui_cancel"):
 			close_talk()
 		return
-	var who = game.npc_near(a)
-	if who != null:
-		prompt = _key_hint() + " Talk to %s" % who.display_name
-		if _use_pressed():
-			open_talk(who)
+	var r: Dictionary = game.interact(a, true)
+	if r.kind == "":
 		return
-	if game.warming_up():                               # warm-up: zip lines yes, loot no
-		var wz = game.events.zip_near(a)
-		if wz != null:
-			prompt = _key_hint() + " Ride the zip line"
-			if _use_pressed():
-				a.start_zip(wz[0], wz[1])
-		return
-	var vault = game.bosses.vault_near(a) if game.bosses != null else null
-	if vault != null:                                   # a keycard vault door
-		var has: bool = game.bosses.keycard_slot(a, vault) >= 0
-		prompt = (_key_hint() + " Open vault") if has else ("Needs " + Items.DEFS[vault.card].name)
-		if has and _use_pressed():
-			game.bosses.open_vault(vault, a)
-		return
-	var c = game.nearest_container(a.global_position, 2.8)
-	if c != null:
-		prompt = _key_hint() + " Open %s" % {"chest": "chest", "ammo_box": "ammo box", "supply_drop": "supply drop"}[c.kind]
-		if _use_pressed():
-			game.open_container(c, a)
-		return
-	var bench = game.events.bench_near(a)
-	if bench != null:
-		var it = a.item()
-		if it == null or Items.def(it).kind != "weapon":
-			prompt = "Hold a weapon to upgrade it here"
-		elif it.rarity >= 4:
-			prompt = "%s is already %s" % [Items.def(it).name, Items.RARITY_NAMES[it.rarity]]
-		else:
-			var cost: int = game.events.upgrade_cost(it.rarity)
-			prompt = _key_hint() + " Upgrade to %s  ·  %d gold%s" % [Items.RARITY_NAMES[it.rarity + 1], cost, "" if a.gold >= cost else "  (you have %d)" % a.gold]
-			if _use_pressed():
-				game.events.upgrade(a)
-		return
-	var zl = game.events.zip_near(a)
-	if zl != null:
-		prompt = _key_hint() + " Ride the zip line"
-		if _use_pressed():
-			a.start_zip(zl[0], zl[1])
-		return
-	var p = game.nearest_pickup(a, 2.2)
-	if p != null and p.item.has("id") and not a.wants(p.item):
-		prompt = _key_hint() + " Swap for %s" % Items.label(p.item)
-		if _use_pressed():
-			var it: Dictionary = p.item
-			game.remove_pickup(p)
-			a.swap_with(it)
+	prompt = (_key_hint() + " " + r.label) if r.usable else r.label
+	if _use_pressed():
+		if r.kind == "talk":
+			open_talk(r.target)
+		elif r.usable:
+			game.interact(a)
 
 
 func subject() -> Actor:

@@ -225,9 +225,12 @@ func upgrade(a: Actor) -> bool:
 	a.gold -= cost
 	it.rarity += 1
 	game.sfx("chest_open", a.global_position)
-	if a.is_player and game.hud:
+	if a == game.player and game.hud:
 		game.hud.add_pickup_note(it)
 		game.announce("Upgraded to %s" % Items.label(it))
+	elif game.nm and a.peer_id > 1:
+		game.nm.ev_to(a.peer_id, "pickup", [it])
+		game.nm.ev_to(a.peer_id, "announce", ["Upgraded to %s" % Items.label(it)])
 	game.stats["upgrades"] = game.stats.get("upgrades", 0) + 1
 	return true
 
@@ -368,7 +371,7 @@ func _physics_process(delta: float) -> void:
 	poi_tick += 1
 	if poi_tick % 6 == 0:
 		_update_poi()
-	if drop_i < DROP_TIMES.size() and game.match_time >= DROP_TIMES[drop_i] and game.storm.active:
+	if drop_i < DROP_TIMES.size() and game.match_time >= DROP_TIMES[drop_i] and game.storm.active and not game.net_client:
 		drop_i += 1
 		spawn_drop()
 	for d in drops:
@@ -395,8 +398,9 @@ func _physics_process(delta: float) -> void:
 			mi.queue_free()
 	for t in thrown.duplicate():
 		_fly_pad(t, delta)
-	for a in game.actors:
-		if not a.alive() or a.state != Actor.State.GROUND or a.zip != null or a.mantle_t >= 0.0:
+	var movers: Array = [game.player] if game.net_client else game.actors     # LAN: everyone moves on their own device
+	for a in movers:
+		if not a.alive() or a.state != Actor.State.GROUND or a.zip != null or a.mantle_t >= 0.0 or a.peer_id > 1:
 			continue
 		if cooldown.get(a.get_instance_id(), -99.0) > game.match_time:
 			continue
@@ -434,6 +438,8 @@ func spawn_drop(at := Vector3.INF) -> Dictionary:
 	n.global_position = p + Vector3(0, DROP_HEIGHT, 0)
 	var d := {"node": n, "pos": p, "landed": false, "smoke_t": 0.0, "smoke_until": game.match_time + 1e6}
 	drops.append(d)
+	if game.nm and game.net_host:
+		game.nm.ev("drop", [p])
 	game.announce("A supply drop is falling")
 	return d
 
@@ -526,6 +532,8 @@ func place_pad(at: Vector3) -> Dictionary:
 	n.global_position = at
 	var p := {"node": n, "pos": at}
 	pads.append(p)
+	if game.nm and game.net_host:
+		game.nm.ev("pad", [at])
 	if pads.size() > 12:
 		var old: Dictionary = pads.pop_front()
 		(old.node as Node).queue_free()

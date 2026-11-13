@@ -92,6 +92,9 @@ func outside_next(p: Vector3) -> float:
 
 
 func _physics_process(delta: float) -> void:
+	if game.net_client:                              # the host's snapshots set the circle; only the wall is drawn here
+		_update_wall()
+		return
 	if not active:
 		return
 	if not done:
